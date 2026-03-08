@@ -1,5 +1,6 @@
 package com.example;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -23,11 +24,59 @@ public class BossLocations
 	);
 
 	/**
-	 * Game object IDs that require validation within the Nex region.
+	 * Theatre of Blood raid location
+	 * Region ID: 14642
+	 */
+	public static final BossLocation THEATRE_OF_BLOOD = new BossLocation(
+		"tob",
+		"Theatre of Blood",
+		Collections.singleton(14642)
+	);
+
+	/**
+	 * Tombs of Amascut raid location
+	 * Region ID: 13454
+	 */
+	public static final BossLocation TOMBS_OF_AMASCUT = new BossLocation(
+		"toa",
+		"Tombs of Amascut",
+		Collections.singleton(13454)
+	);
+
+	/**
+	 * Chambers of Xeric raid location
+	 * Region IDs: 13393, 13137 (varies by raid layout)
+	 */
+	public static final BossLocation CHAMBERS_OF_XERIC = new BossLocation(
+		"cox",
+		"Chambers of Xeric",
+		new HashSet<>(Arrays.asList(13393, 13137))
+	);
+
+	/**
+	 * Game object ID that requires validation within the Nex region.
 	 * Object ID 42967 = NEX_FIGHT_BARRIER (room available)
 	 * Object ID 42968 = NEX_FIGHT_BARRIER_BUSY (room busy) - not validated
 	 */
-	public static final Set<Integer> NEX_OBJECTS = Collections.singleton(42967);
+	public static final int NEX_OBJECT = 42967;
+
+	/**
+	 * Game object ID that requires validation within the Theatre of Blood region.
+	 * Object ID 32653 = TOB_ENTRANCE
+	 */
+	public static final int TOB_OBJECT = 32653;
+
+	/**
+	 * Game object ID that requires validation within the Tombs of Amascut region.
+	 * Object ID 46089 = TOA_ENTRANCE
+	 */
+	public static final int TOA_OBJECT = 46089;
+
+	/**
+	 * Game object ID that requires validation within the Chambers of Xeric region.
+	 * Object ID 29789 = COX_ENTRANCE
+	 */
+	public static final int COX_OBJECT = 29789;
 
 	/**
 	 * All supported boss locations.
@@ -36,26 +85,26 @@ public class BossLocations
 	public static final Set<BossLocation> ALL_LOCATIONS;
 
 	/**
-	 * Map of location ID to the set of game object IDs that require validation in that location.
+	 * Map of location ID to the game object ID that requires validation in that location.
 	 */
-	public static final Map<String, Set<Integer>> LOCATION_OBJECTS;
+	public static final Map<String, Integer> LOCATION_OBJECTS;
 
 	static
 	{
 		Set<BossLocation> locations = new HashSet<>();
 		locations.add(NEX);
-		// Add future locations here:
-		// locations.add(COLOSSEUM);
-		// locations.add(INFERNO);
-		// etc.
+		locations.add(THEATRE_OF_BLOOD);
+		locations.add(TOMBS_OF_AMASCUT);
+		locations.add(CHAMBERS_OF_XERIC);
 		
 		ALL_LOCATIONS = Collections.unmodifiableSet(locations);
 
 		// Map locations to their game objects
-		Map<String, Set<Integer>> objectMap = new HashMap<>();
-		objectMap.put(NEX.getId(), NEX_OBJECTS);
-		// Add future location objects here:
-		// objectMap.put(COLOSSEUM.getId(), COLOSSEUM_OBJECTS);
+		Map<String, Integer> objectMap = new HashMap<>();
+		objectMap.put(NEX.getId(), NEX_OBJECT);
+		objectMap.put(THEATRE_OF_BLOOD.getId(), TOB_OBJECT);
+		objectMap.put(TOMBS_OF_AMASCUT.getId(), TOA_OBJECT);
+		objectMap.put(CHAMBERS_OF_XERIC.getId(), COX_OBJECT);
 		
 		LOCATION_OBJECTS = Collections.unmodifiableMap(objectMap);
 	}
@@ -96,15 +145,15 @@ public class BossLocations
 	}
 
 	/**
-	 * Get the set of game object IDs that require validation for a location
+	 * Get the game object ID that requires validation for a location
 	 */
-	public static Set<Integer> getObjectsForLocation(BossLocation location)
+	public static Integer getObjectForLocation(BossLocation location)
 	{
 		if (location == null)
 		{
-			return Collections.emptySet();
+			return null;
 		}
-		return LOCATION_OBJECTS.getOrDefault(location.getId(), Collections.emptySet());
+		return LOCATION_OBJECTS.get(location.getId());
 	}
 
 	/**
@@ -112,7 +161,7 @@ public class BossLocations
 	 */
 	public static boolean isValidatedObject(BossLocation location, int objectId)
 	{
-		Set<Integer> objects = getObjectsForLocation(location);
-		return objects.contains(objectId);
+		Integer validatedObjectId = getObjectForLocation(location);
+		return validatedObjectId != null && validatedObjectId == objectId;
 	}
 }

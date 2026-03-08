@@ -199,17 +199,26 @@ public class AccessDeniedPlugin extends Plugin
 		// Check if the config change affects the current location
 		boolean shouldRevalidate = false;
 		String locationId = currentLocation.getId();
+		String configKey = event.getKey();
 		
 		switch (locationId)
 		{
 			case "nex":
-				shouldRevalidate = "nexRequireSpell".equals(event.getKey()) 
-					|| "nexRequireDeathCharge".equals(event.getKey());
+				shouldRevalidate = "nexRequireSpell".equals(configKey) 
+					|| "nexRequireDeathCharge".equals(configKey);
 				break;
-			// Future locations can be added here:
-			// case "colosseum":
-			//     shouldRevalidate = "colosseumRequireSpell".equals(event.getKey());
-			//     break;
+			case "tob":
+				shouldRevalidate = "tobRequireSpell".equals(configKey) 
+					|| "tobRequireDeathCharge".equals(configKey);
+				break;
+			case "toa":
+				shouldRevalidate = "toaRequireSpell".equals(configKey) 
+					|| "toaRequireDeathCharge".equals(configKey);
+				break;
+			case "cox":
+				shouldRevalidate = "coxRequireSpell".equals(configKey) 
+					|| "coxRequireDeathCharge".equals(configKey);
+				break;
 		}
 
 		if (shouldRevalidate)
@@ -425,13 +434,32 @@ public class AccessDeniedPlugin extends Plugin
 		switch (location.getId())
 		{
 			case "nex":
-				return validateNexRequirements();
+				return validateRaidRequirements(
+					location,
+					config.nexRequireSpell(),
+					config.nexRequireDeathCharge()
+				);
 			
-			// Future locations can be added here:
-			// case "colosseum":
-			//     return validateColosseumRequirements();
-			// case "inferno":
-			//     return validateInfernoRequirements();
+			case "tob":
+				return validateRaidRequirements(
+					location,
+					config.tobRequireSpell(),
+					config.tobRequireDeathCharge()
+				);
+			
+			case "toa":
+				return validateRaidRequirements(
+					location,
+					config.toaRequireSpell(),
+					config.toaRequireDeathCharge()
+				);
+			
+			case "cox":
+				return validateRaidRequirements(
+					location,
+					config.coxRequireSpell(),
+					config.coxRequireDeathCharge()
+				);
 			
 			default:
 				log.warn("No validation logic implemented for location: {}", location.getId());
@@ -445,18 +473,21 @@ public class AccessDeniedPlugin extends Plugin
 	}
 
 	/**
-	 * Validate Nex-specific requirements.
+	 * Validate raid requirements (generic for all raids with thralls/death charge).
 	 * Can require either Resurrect Greater Ghost spell or Death Charge spell (or both).
 	 * - Resurrect Greater Ghost requires: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, Arceuus spellbook
 	 * - Death Charge requires: 1 Death rune, 1 Blood rune, 1 Soul rune, Arceuus spellbook
 	 * Aether runes count as both Soul and Cosmic runes.
+	 * 
+	 * @param location The location being validated
+	 * @param requireThralls Whether to require Resurrect Greater Ghost
+	 * @param requireDeathCharge Whether to require Death Charge
+	 * @return ValidationResult indicating whether requirements are met
 	 */
-	private ValidationResult validateNexRequirements()
+	private ValidationResult validateRaidRequirements(BossLocation location, boolean requireThralls, boolean requireDeathCharge)
 	{
-		boolean requireThralls = config.nexRequireSpell();
-		boolean requireDeathCharge = config.nexRequireDeathCharge();
-
-		log.debug("Checking Nex requirements - Thralls: {}, Death Charge: {}", requireThralls, requireDeathCharge);
+		log.debug("Checking {} requirements - Thralls: {}, Death Charge: {}", 
+			location.getDisplayName(), requireThralls, requireDeathCharge);
 
 		// Check spellbook (required for both)
 		boolean hasSpellbook = playerStateValidator.isOnArceuusSpellbook();
@@ -519,7 +550,7 @@ public class AccessDeniedPlugin extends Plugin
 
 		if (allValid)
 		{
-			log.debug("Validation PASSED for Nex: Has all requirements");
+			log.debug("Validation PASSED for {}: Has all requirements", location.getDisplayName());
 			return new ValidationResult(
 				true,
 				java.util.Collections.emptySet(),
@@ -532,7 +563,7 @@ public class AccessDeniedPlugin extends Plugin
 			// Build specific failure message
 			String failureMessage = "Missing: " + String.join(", ", missing);
 
-			log.debug("Validation FAILED for Nex: {}", failureMessage);
+			log.debug("Validation FAILED for {}: {}", location.getDisplayName(), failureMessage);
 			return new ValidationResult(
 				false,
 				java.util.Collections.singleton(failureMessage),
@@ -557,11 +588,12 @@ public class AccessDeniedPlugin extends Plugin
 		{
 			case "nex":
 				return config.nexRequireSpell() || config.nexRequireDeathCharge();
-			// Future locations can be added here:
-			// case "colosseum":
-			//     return config.colosseumRequireSpell();
-			// case "inferno":
-			//     return config.infernoRequireSpell();
+			case "tob":
+				return config.tobRequireSpell() || config.tobRequireDeathCharge();
+			case "toa":
+				return config.toaRequireSpell() || config.toaRequireDeathCharge();
+			case "cox":
+				return config.coxRequireSpell() || config.coxRequireDeathCharge();
 			default:
 				return false;
 		}

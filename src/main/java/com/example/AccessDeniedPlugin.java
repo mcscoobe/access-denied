@@ -228,53 +228,63 @@ public class AccessDeniedPlugin extends Plugin
 		// If validation failed, modify the menu entry to "Walk here"
 		if (!validationResult.isValid())
 		{
-			// log.info("Validation failed, modifying menu entry to 'Walk here'");
-
 			// Get the current menu entries
 			MenuEntry[] menuEntries = client.getMenuEntries();
 
-			// Modify ALL entries for this object ID
-			boolean modified = false;
+			// Find the "Walk here" entry (if it exists)
+			MenuEntry walkHereEntry = null;
+			int walkHereIndex = -1;
+			
 			for (int i = 0; i < menuEntries.length; i++)
 			{
 				MenuEntry entry = menuEntries[i];
-				if (entry.getIdentifier() == objectId)
+				if (entry.getType() == MenuAction.WALK)
 				{
-					// log.info("Modifying menu entry {} - Old option: '{}', New option: 'Walk here'", 
-						// i, entry.getOption());
-					// Change the option to "Walk here" and set action type to walk
-					entry.setOption("Walk here");
-					entry.setType(MenuAction.WALK);
-					modified = true;
+					walkHereEntry = entry;
+					walkHereIndex = i;
+					break;
 				}
 			}
 
-			if (modified)
+			// If we found a "Walk here" entry and it's not already last, move it to the end
+			if (walkHereEntry != null && walkHereIndex < menuEntries.length - 1)
 			{
-				client.setMenuEntries(menuEntries);
-				// log.info("Menu entries modified successfully");
+				// Create a new array with "Walk here" at the end (last = default left-click)
+				MenuEntry[] reorderedEntries = new MenuEntry[menuEntries.length];
 				
-				// Only display feedback message once per validation
-				if (!Boolean.TRUE.equals(menuModifiedState.get(currentLocation.getId())))
+				// Copy all other entries, skipping the original "Walk here" position
+				int newIndex = 0;
+				for (int i = 0; i < menuEntries.length; i++)
 				{
-					// Display simple message since we're not tracking individual runes
-					String message = validationResult.getFeedbackMessage();
-					if (message != null && !message.isEmpty())
+					if (i != walkHereIndex)
 					{
-						client.addChatMessage(
-							ChatMessageType.GAMEMESSAGE,
-							"",
-							message,
-							null
-						);
+						reorderedEntries[newIndex++] = menuEntries[i];
 					}
-					menuModifiedState.put(currentLocation.getId(), true);
 				}
+				
+				// Put "Walk here" at the end (default left-click position)
+				reorderedEntries[menuEntries.length - 1] = walkHereEntry;
+				
+				client.setMenuEntries(reorderedEntries);
+				log.debug("Reordered menu entries - 'Walk here' is now the default option (last in array)");
 			}
-		}
-		else
-		{
-			// log.info("Validation passed, allowing normal menu entry");
+
+			// Only display feedback message once per validation
+			if (!Boolean.TRUE.equals(menuModifiedState.get(currentLocation.getId())))
+			{
+				// Display simple message since we're not tracking individual runes
+				String message = validationResult.getFeedbackMessage();
+				if (message != null && !message.isEmpty())
+				{
+					client.addChatMessage(
+						ChatMessageType.GAMEMESSAGE,
+						"",
+						message,
+						null
+					);
+				}
+				menuModifiedState.put(currentLocation.getId(), true);
+			}
 		}
 	}
 

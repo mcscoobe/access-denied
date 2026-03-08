@@ -14,8 +14,10 @@ import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
@@ -36,6 +38,9 @@ public class AccessDeniedPlugin extends Plugin
 
 	@Inject
 	private PlayerStateValidator playerStateValidator;
+
+	@Inject
+	private ClientThread clientThread;
 
 	// Current location tracking
 	private BossLocation currentLocation;
@@ -110,6 +115,7 @@ public class AccessDeniedPlugin extends Plugin
 	/**
 	 * Listen for item container changes to detect when runes are added/removed.
 	 * This triggers revalidation when the player's inventory or equipment changes.
+	 * Also listens for bank changes to detect when rune pouch is deposited.
 	 */
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
@@ -126,19 +132,24 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		// Check for inventory changes (runes can be in inventory or rune pouch)
+		// Check for inventory or bank changes
+		// Bank changes are important because depositing rune pouch clears the varbits
 		int containerId = event.getContainerId();
-		if (containerId == InventoryID.INV)
+		if (containerId == InventoryID.INV || containerId == InventoryID.BANK)
 		{
-			log.debug("Inventory changed while in {} region, revalidating", 
-				currentLocation.getDisplayName());
+			log.debug("Inventory/Bank changed (container: {}) while in {} region, revalidating", 
+				containerId, currentLocation.getDisplayName());
+			
+			// Clear the menu modified state so the message can be shown again if validation state changed
+			menuModifiedState.remove(currentLocation.getId());
+			
 			validateCurrentLocation();
 		}
 	}
 
 	/**
-	 * Listen for varbit changes to detect when rune pouch contents are updated.
-	 * This is the most reliable way to detect rune pouch changes.
+	 * Listen for varbit changes to detect when rune pouch contents or spellbook are updated.
+	 * This is the most reliable way to detect rune pouch and spellbook changes.
 	 */
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged event)
@@ -155,23 +166,70 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		// Only revalidate if the changed varbit is related to rune pouch
+		// Only revalidate if the changed varbit is related to rune pouch or spellbook
 		int varbitId = event.getVarbitId();
 		if (!isRunePouchVarbit(varbitId))
 		{
 			return;
 		}
 
-		log.debug("Rune pouch varbit {} changed while in {} region, revalidating", 
+		log.debug("Rune pouch/spellbook varbit {} changed while in {} region, revalidating", 
 			varbitId, currentLocation.getDisplayName());
 		validateCurrentLocation();
 	}
 
 	/**
-	 * Check if a varbit ID is related to rune pouch contents.
+	 * Listen for config changes to revalidate when the user enables/disables requirements.
+	 */
+	@Subscribe
+	public void onConfigChanged(ConfigChanged event)
+	{
+		// Only care about our config group
+		if (!"accessdenied".equals(event.getGroup()))
+		{
+			return;
+		}
+
+		// Only revalidate if we're currently in a boss location
+		if (currentLocation == null)
+		{
+			return;
+		}
+
+		// If the config changed for the current location, clear cache and revalidate on client thread
+		if ("nexRequireSpell".equals(event.getKey()) && "nex".equals(currentLocation.getId()))
+		{
+			log.info("Nex requirement config changed to: {}, clearing cache and revalidating", config.nexRequireSpell());
+			
+			// Clear the cached validation result immediately so menu entries will trigger revalidation
+			validationCache.remove(currentLocation.getId());
+			
+			// Clear the menu modified state so the message can be shown again if needed
+			menuModifiedState.remove(currentLocation.getId());
+			
+			// Schedule validation to run on the client thread (required for client API calls)
+			clientThread.invokeLater(() -> {
+				validateCurrentLocation();
+				
+				// Log the new validation state
+				ValidationResult result = validationCache.get(currentLocation.getId());
+				if (result != null)
+				{
+					log.info("New validation state - Valid: {}, Message: {}", 
+						result.isValid(), result.getFeedbackMessage());
+				}
+			});
+		}
+	}
+
+	/**
+	 * Check if a varbit ID is related to rune pouch contents or spellbook.
 	 */
 	private boolean isRunePouchVarbit(int varbitId)
 	{
+		// Varbit 4070 tracks the current spellbook (0=Standard, 1=Ancient, 2=Lunar, 3=Arceuus)
+		final int SPELLBOOK_VARBIT = 4070;
+		
 		return varbitId == VarbitID.RUNE_POUCH_TYPE_1
 			|| varbitId == VarbitID.RUNE_POUCH_TYPE_2
 			|| varbitId == VarbitID.RUNE_POUCH_TYPE_3
@@ -179,7 +237,8 @@ public class AccessDeniedPlugin extends Plugin
 			|| varbitId == VarbitID.RUNE_POUCH_QUANTITY_1
 			|| varbitId == VarbitID.RUNE_POUCH_QUANTITY_2
 			|| varbitId == VarbitID.RUNE_POUCH_QUANTITY_3
-			|| varbitId == VarbitID.RUNE_POUCH_QUANTITY_4;
+			|| varbitId == VarbitID.RUNE_POUCH_QUANTITY_4
+			|| varbitId == SPELLBOOK_VARBIT;
 	}
 
 	/**
@@ -191,6 +250,12 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		// Only process if we're in a boss location
 		if (currentLocation == null)
+		{
+			return;
+		}
+
+		// Check if validation is required for this location
+		if (!isValidationRequired(currentLocation))
 		{
 			return;
 		}
@@ -210,20 +275,21 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		log.debug("Menu entry detected - Location: {}, ObjectID: {}, Option: {}, Target: {}", 
-			currentLocation.getDisplayName(), objectId, event.getOption(), event.getTarget());
-
 		// Get cached validation result for this location
 		ValidationResult validationResult = validationCache.get(currentLocation.getId());
 		
 		if (validationResult == null)
 		{
-			log.warn("No cached validation result for {}, this shouldn't happen", currentLocation.getDisplayName());
-			return;
+			log.debug("No cached validation result for {}, validating now", currentLocation.getDisplayName());
+			validateCurrentLocation();
+			validationResult = validationCache.get(currentLocation.getId());
+			
+			if (validationResult == null)
+			{
+				log.error("Still no validation result after validating, this shouldn't happen");
+				return;
+			}
 		}
-
-		log.debug("Validation result - Valid: {}, Message: {}", 
-			validationResult.isValid(), validationResult.getFeedbackMessage());
 
 		// If validation failed, modify the menu entry to "Walk here"
 		if (!validationResult.isValid())
@@ -266,7 +332,6 @@ public class AccessDeniedPlugin extends Plugin
 				reorderedEntries[menuEntries.length - 1] = walkHereEntry;
 				
 				client.setMenuEntries(reorderedEntries);
-				log.debug("Reordered menu entries - 'Walk here' is now the default option (last in array)");
 			}
 
 			// Only display feedback message once per validation
@@ -285,6 +350,11 @@ public class AccessDeniedPlugin extends Plugin
 				}
 				menuModifiedState.put(currentLocation.getId(), true);
 			}
+		}
+		else
+		{
+			// Validation passed - reset the menu modified state so if it fails later, message shows again
+			menuModifiedState.remove(currentLocation.getId());
 		}
 	}
 
@@ -319,16 +389,18 @@ public class AccessDeniedPlugin extends Plugin
 		}
 
 		// Check if player has required runes by counting them directly
-		log.debug("Checking rune counts for Resurrect Greater Ghost spell");
+		log.debug("Checking requirements for Resurrect Greater Ghost spell");
 		
 		boolean hasRunes = playerStateValidator.hasResurrectGreaterGhostRunes();
 		boolean hasBook = playerStateValidator.hasBookOfTheDead();
+		boolean hasSpellbook = playerStateValidator.isOnArceuusSpellbook();
 
 		log.debug("Has required runes: {}", hasRunes);
 		log.debug("Has Book of the Dead: {}", hasBook);
+		log.debug("On Arceuus spellbook: {}", hasSpellbook);
 
 		ValidationResult validationResult;
-		if (hasRunes && hasBook)
+		if (hasRunes && hasBook && hasSpellbook)
 		{
 			log.debug("Validation PASSED for {}: Has all requirements for Resurrect Greater Ghost", currentLocation.getDisplayName());
 			validationResult = new ValidationResult(
@@ -341,25 +413,30 @@ public class AccessDeniedPlugin extends Plugin
 		else
 		{
 			// Build specific failure message
-			String failureMessage;
-			if (!hasRunes && !hasBook)
+			StringBuilder failureMessage = new StringBuilder("Missing: ");
+			java.util.List<String> missing = new java.util.ArrayList<>();
+			
+			if (!hasRunes)
 			{
-				failureMessage = "Missing required runes and Book of the Dead for Resurrect Greater Ghost";
+				missing.add("required runes");
 			}
-			else if (!hasRunes)
+			if (!hasBook)
 			{
-				failureMessage = "Missing required runes for Resurrect Greater Ghost";
+				missing.add("Book of the Dead");
 			}
-			else
+			if (!hasSpellbook)
 			{
-				failureMessage = "Missing Book of the Dead for Resurrect Greater Ghost";
+				missing.add("Arceuus spellbook");
 			}
+			
+			failureMessage.append(String.join(", ", missing));
+			failureMessage.append(" for Resurrect Greater Ghost");
 
 			log.debug("Validation FAILED for {}: {}", currentLocation.getDisplayName(), failureMessage);
 			validationResult = new ValidationResult(
 				false,
-				java.util.Collections.singleton(failureMessage),
-				failureMessage,
+				java.util.Collections.singleton(failureMessage.toString()),
+				failureMessage.toString(),
 				new HashMap<>()
 			);
 		}

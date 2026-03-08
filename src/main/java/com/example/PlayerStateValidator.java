@@ -31,6 +31,25 @@ public class PlayerStateValidator
 	}
 
 	/**
+	 * Check if the player is on the Arceuus spellbook.
+	 * Arceuus spellbook is required to cast Resurrect Greater Ghost.
+	 * 
+	 * @return true if the player is on the Arceuus spellbook, false otherwise
+	 */
+	public boolean isOnArceuusSpellbook()
+	{
+		// Varbit 4070 tracks the current spellbook
+		// 0 = Standard, 1 = Ancient, 2 = Lunar, 3 = Arceuus
+		final int SPELLBOOK_VARBIT = 4070;
+		final int ARCEUUS_SPELLBOOK = 3;
+
+		int currentSpellbook = client.getVarbitValue(SPELLBOOK_VARBIT);
+		log.debug("Current spellbook varbit value: {} (3 = Arceuus)", currentSpellbook);
+
+		return currentSpellbook == ARCEUUS_SPELLBOOK;
+	}
+
+	/**
 	 * Check if the player has the required runes to cast Resurrect Greater Ghost.
 	 * Resurrect Greater Ghost requires: 4 Soul runes, 2 Blood runes, 1 Cosmic rune
 	 * 
@@ -136,10 +155,19 @@ public class PlayerStateValidator
 	 * Get rune pouch contents from varbits.
 	 * The rune pouch uses varbits to store contents (not varps).
 	 * The varbit values are enum keys that need to be mapped to actual item IDs.
+	 * 
+	 * IMPORTANT: Only returns contents if the rune pouch is actually in the player's inventory.
 	 */
 	private Map<Integer, Integer> getRunePouchContents()
 	{
 		Map<Integer, Integer> contents = new HashMap<>();
+
+		// First, check if the player actually has a rune pouch in their inventory
+		if (!hasRunePouchInInventory())
+		{
+			log.debug("Rune pouch not found in inventory, ignoring varbits");
+			return contents;
+		}
 
 		// Get the rune pouch enum to map varbit values to item IDs
 		EnumComposition runepouchEnum = client.getEnum(EnumID.RUNEPOUCH_RUNE);
@@ -179,5 +207,49 @@ public class PlayerStateValidator
 		log.debug("Rune pouch total: {} different rune types", contents.size());
 		
 		return contents;
+	}
+
+	/**
+	 * Check if the player has a rune pouch in their inventory.
+	 * Rune pouch item IDs:
+	 * - 12791: Regular rune pouch
+	 * - 27281: Divine rune pouch
+	 * - 27086: Divine rune pouch (old ID, may be deprecated)
+	 * - 27509: Divine rune pouch (locked)
+	 */
+	private boolean hasRunePouchInInventory()
+	{
+		final int RUNE_POUCH_ID = 12791;
+		final int DIVINE_RUNE_POUCH_ID = 27281;
+		final int DIVINE_RUNE_POUCH_OLD_ID = 27086;
+		final int DIVINE_RUNE_POUCH_LOCKED_ID = 27509;
+
+		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+		if (inventory == null)
+		{
+			log.debug("Inventory container is null");
+			return false;
+		}
+
+		log.debug("Checking for rune pouch in inventory:");
+		for (Item item : inventory.getItems())
+		{
+			int itemId = item.getId();
+			if (itemId > 0)
+			{
+				log.debug("  Found item ID: {}", itemId);
+			}
+			if (itemId == RUNE_POUCH_ID 
+				|| itemId == DIVINE_RUNE_POUCH_ID 
+				|| itemId == DIVINE_RUNE_POUCH_OLD_ID
+				|| itemId == DIVINE_RUNE_POUCH_LOCKED_ID)
+			{
+				log.debug("  -> Rune pouch found! (ID: {})", itemId);
+				return true;
+			}
+		}
+
+		log.debug("  -> No rune pouch found in inventory");
+		return false;
 	}
 }

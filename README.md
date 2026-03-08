@@ -36,6 +36,15 @@ When you hover over a boss entrance with validation enabled, the plugin:
 3. Confirms Book of the Dead is in inventory (for thralls)
 4. Prevents accidental entry by changing the default click action if requirements aren't met
 
+## Contributing
+
+Ideas and suggestions are welcome! If you have:
+- Boss locations you'd like to see added
+- Additional item or rune configurations
+- Feature requests or improvements
+
+Feel free to open an issue or submit a pull request.
+
 ## Development
 
 Build: `gradlew.bat build`

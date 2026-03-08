@@ -47,9 +47,9 @@ public class PlayerStateValidator
 		// Get total rune counts from all sources
 		Map<Integer, Integer> totalRunes = getTotalRuneCounts();
 
-		log.info("Checking Resurrect Greater Ghost runes:");
-		log.info("  Required: Soul x4, Blood x2, Cosmic x1");
-		log.info("  Available: Soul x{}, Blood x{}, Cosmic x{}", 
+		log.debug("Checking Resurrect Greater Ghost runes:");
+		log.debug("  Required: Soul x4, Blood x2, Cosmic x1");
+		log.debug("  Available: Soul x{}, Blood x{}, Cosmic x{}", 
 			totalRunes.getOrDefault(566, 0),
 			totalRunes.getOrDefault(565, 0),
 			totalRunes.getOrDefault(564, 0));
@@ -63,13 +63,43 @@ public class PlayerStateValidator
 
 			if (available < required)
 			{
-				log.info("  Missing rune {} - need {}, have {}", runeId, required, available);
+				log.debug("  Missing rune {} - need {}, have {}", runeId, required, available);
 				return false;
 			}
 		}
 
-		log.info("  All runes available!");
+		log.debug("  All runes available!");
 		return true;
+	}
+
+	/**
+	 * Check if the player has a Book of the Dead in their inventory.
+	 * Book of the Dead is required to cast Resurrect Greater Ghost.
+	 * 
+	 * @return true if the player has a Book of the Dead, false otherwise
+	 */
+	public boolean hasBookOfTheDead()
+	{
+		final int BOOK_OF_THE_DEAD_ID = 25818;
+
+		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+		if (inventory == null)
+		{
+			log.debug("Checking Book of the Dead: Inventory is null");
+			return false;
+		}
+
+		for (Item item : inventory.getItems())
+		{
+			if (item.getId() == BOOK_OF_THE_DEAD_ID)
+			{
+				log.debug("Book of the Dead found in inventory");
+				return true;
+			}
+		}
+
+		log.debug("Book of the Dead NOT found in inventory");
+		return false;
 	}
 
 	/**
@@ -129,24 +159,24 @@ public class PlayerStateValidator
 			VarbitID.RUNE_POUCH_QUANTITY_4
 		};
 
-		log.info("Reading rune pouch contents from varbits:");
+		log.debug("Reading rune pouch contents from varbits:");
 		for (int i = 0; i < 4; i++)
 		{
 			int runeEnumKey = client.getVarbitValue(runeVarbits[i]);
 			int amount = client.getVarbitValue(amountVarbits[i]);
 
-			log.info("  Slot {} - Varbit value (enum key): {}, Amount: {}", i + 1, runeEnumKey, amount);
+			log.debug("  Slot {} - Varbit value (enum key): {}, Amount: {}", i + 1, runeEnumKey, amount);
 
 			if (runeEnumKey > 0 && amount > 0)
 			{
 				// Map the enum key to the actual item ID
 				int itemId = runepouchEnum.getIntValue(runeEnumKey);
-				log.info("    -> Mapped to ItemID: {}", itemId);
+				log.debug("    -> Mapped to ItemID: {}", itemId);
 				contents.put(itemId, amount);
 			}
 		}
 
-		log.info("Rune pouch total: {} different rune types", contents.size());
+		log.debug("Rune pouch total: {} different rune types", contents.size());
 		
 		return contents;
 	}

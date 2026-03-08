@@ -130,7 +130,7 @@ public class AccessDeniedPlugin extends Plugin
 		int containerId = event.getContainerId();
 		if (containerId == InventoryID.INV)
 		{
-			log.info("Inventory changed while in {} region, revalidating", 
+			log.debug("Inventory changed while in {} region, revalidating", 
 				currentLocation.getDisplayName());
 			validateCurrentLocation();
 		}
@@ -162,7 +162,7 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		log.info("Rune pouch varbit {} changed while in {} region, revalidating", 
+		log.debug("Rune pouch varbit {} changed while in {} region, revalidating", 
 			varbitId, currentLocation.getDisplayName());
 		validateCurrentLocation();
 	}
@@ -210,7 +210,7 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		log.info("Menu entry detected - Location: {}, ObjectID: {}, Option: {}, Target: {}", 
+		log.debug("Menu entry detected - Location: {}, ObjectID: {}, Option: {}, Target: {}", 
 			currentLocation.getDisplayName(), objectId, event.getOption(), event.getTarget());
 
 		// Get cached validation result for this location
@@ -222,7 +222,7 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		log.info("Validation result - Valid: {}, Message: {}", 
+		log.debug("Validation result - Valid: {}, Message: {}", 
 			validationResult.isValid(), validationResult.getFeedbackMessage());
 
 		// If validation failed, modify the menu entry to "Walk here"
@@ -289,15 +289,15 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		log.info("=== Validating requirements for {} ===", currentLocation.getDisplayName());
+		log.debug("=== Validating requirements for {} ===", currentLocation.getDisplayName());
 
 		// Check if validation is required for this location
 		boolean validationRequired = isValidationRequired(currentLocation);
-		log.info("Validation required: {}", validationRequired);
+		log.debug("Validation required: {}", validationRequired);
 
 		if (!validationRequired)
 		{
-			log.info("No validation required for {}, allowing entry", currentLocation.getDisplayName());
+			log.debug("No validation required for {}, allowing entry", currentLocation.getDisplayName());
 			ValidationResult allowResult = new ValidationResult(
 				true, 
 				java.util.Collections.emptySet(), 
@@ -309,16 +309,18 @@ public class AccessDeniedPlugin extends Plugin
 		}
 
 		// Check if player has required runes by counting them directly
-		log.info("Checking rune counts for Resurrect Greater Ghost spell");
+		log.debug("Checking rune counts for Resurrect Greater Ghost spell");
 		
 		boolean hasRunes = playerStateValidator.hasResurrectGreaterGhostRunes();
+		boolean hasBook = playerStateValidator.hasBookOfTheDead();
 
-		log.info("Has required runes: {}", hasRunes);
+		log.debug("Has required runes: {}", hasRunes);
+		log.debug("Has Book of the Dead: {}", hasBook);
 
 		ValidationResult validationResult;
-		if (hasRunes)
+		if (hasRunes && hasBook)
 		{
-			log.info("Validation PASSED for {}: Has required runes for Resurrect Greater Ghost", currentLocation.getDisplayName());
+			log.debug("Validation PASSED for {}: Has all requirements for Resurrect Greater Ghost", currentLocation.getDisplayName());
 			validationResult = new ValidationResult(
 				true,
 				java.util.Collections.emptySet(),
@@ -328,18 +330,33 @@ public class AccessDeniedPlugin extends Plugin
 		}
 		else
 		{
-			log.info("Validation FAILED for {}: Missing required runes for Resurrect Greater Ghost", currentLocation.getDisplayName());
+			// Build specific failure message
+			String failureMessage;
+			if (!hasRunes && !hasBook)
+			{
+				failureMessage = "Missing required runes and Book of the Dead for Resurrect Greater Ghost";
+			}
+			else if (!hasRunes)
+			{
+				failureMessage = "Missing required runes for Resurrect Greater Ghost";
+			}
+			else
+			{
+				failureMessage = "Missing Book of the Dead for Resurrect Greater Ghost";
+			}
+
+			log.debug("Validation FAILED for {}: {}", currentLocation.getDisplayName(), failureMessage);
 			validationResult = new ValidationResult(
 				false,
-				java.util.Collections.singleton("Missing required runes for Resurrect Greater Ghost"),
-				"Missing required runes for Resurrect Greater Ghost",
+				java.util.Collections.singleton(failureMessage),
+				failureMessage,
 				new HashMap<>()
 			);
 		}
 
 		// Cache the result
 		validationCache.put(currentLocation.getId(), validationResult);
-		log.info("=== Validation complete, result cached ===");
+		log.debug("=== Validation complete, result cached ===");
 	}
 
 	/**

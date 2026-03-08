@@ -78,37 +78,49 @@ public class AccessDeniedPlugin extends Plugin
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
-		if (event.getGameState() == GameState.LOGGED_IN || event.getGameState() == GameState.LOADING)
+		// Only process on logged in or loading states
+		if (event.getGameState() != GameState.LOGGED_IN && event.getGameState() != GameState.LOADING)
 		{
-			// Update current regions
-			if (client.getLocalPlayer() != null)
-			{
-				int[] newRegions = client.getMapRegions();
-				log.debug("Current regions: {}", java.util.Arrays.toString(newRegions));
-				
-				// Check if we've changed regions
-				if (!regionsEqual(currentRegions, newRegions))
-				{
-					currentRegions = newRegions;
-					BossLocation newLocation = BossLocations.findByAnyRegion(newRegions);
-					
-					if (newLocation != currentLocation)
-					{
-						log.info("Region changed - Old location: {}, New location: {}", 
-							currentLocation != null ? currentLocation.getDisplayName() : "none",
-							newLocation != null ? newLocation.getDisplayName() : "none");
-						
-						currentLocation = newLocation;
-						
-						// If we entered a boss location, validate immediately
-						if (currentLocation != null)
-						{
-							log.info("Entered {} region, performing validation", currentLocation.getDisplayName());
-							validateCurrentLocation();
-						}
-					}
-				}
-			}
+			return;
+		}
+
+		// Ensure player exists
+		if (client.getLocalPlayer() == null)
+		{
+			return;
+		}
+
+		// Get current regions
+		int[] newRegions = client.getMapRegions();
+		log.debug("Current regions: {}", java.util.Arrays.toString(newRegions));
+
+		// Check if regions have changed
+		if (regionsEqual(currentRegions, newRegions))
+		{
+			return;
+		}
+
+		// Update regions and check for location change
+		currentRegions = newRegions;
+		BossLocation newLocation = BossLocations.findByAnyRegion(newRegions);
+
+		if (newLocation == currentLocation)
+		{
+			return;
+		}
+
+		// Location changed
+		log.info("Region changed - Old location: {}, New location: {}", 
+			currentLocation != null ? currentLocation.getDisplayName() : "none",
+			newLocation != null ? newLocation.getDisplayName() : "none");
+
+		currentLocation = newLocation;
+
+		// Validate if we entered a boss location
+		if (currentLocation != null)
+		{
+			log.info("Entered {} region, performing validation", currentLocation.getDisplayName());
+			validateCurrentLocation();
 		}
 	}
 
@@ -223,28 +235,36 @@ public class AccessDeniedPlugin extends Plugin
 
 		if (shouldRevalidate)
 		{
-			log.info("{} requirement config changed, clearing cache and revalidating", 
-				currentLocation.getDisplayName());
-			
-			// Clear the cached validation result immediately so menu entries will trigger revalidation
-			validationCache.remove(currentLocation.getId());
-			
-			// Clear the menu modified state so the message can be shown again if needed
-			menuModifiedState.remove(currentLocation.getId());
-			
-			// Schedule validation to run on the client thread (required for client API calls)
-			clientThread.invokeLater(() -> {
-				validateCurrentLocation();
-				
-				// Log the new validation state
-				ValidationResult result = validationCache.get(currentLocation.getId());
-				if (result != null)
-				{
-					log.info("New validation state - Valid: {}, Message: {}", 
-						result.isValid(), result.getFeedbackMessage());
-				}
-			});
+			handleConfigRevalidation();
 		}
+	}
+
+	/**
+	 * Handle revalidation when config changes.
+	 */
+	private void handleConfigRevalidation()
+	{
+		log.info("{} requirement config changed, clearing cache and revalidating", 
+			currentLocation.getDisplayName());
+		
+		// Clear the cached validation result immediately so menu entries will trigger revalidation
+		validationCache.remove(currentLocation.getId());
+		
+		// Clear the menu modified state so the message can be shown again if needed
+		menuModifiedState.remove(currentLocation.getId());
+		
+		// Schedule validation to run on the client thread (required for client API calls)
+		clientThread.invokeLater(() -> {
+			validateCurrentLocation();
+			
+			// Log the new validation state
+			ValidationResult result = validationCache.get(currentLocation.getId());
+			if (result != null)
+			{
+				log.info("New validation state - Valid: {}, Message: {}", 
+					result.isValid(), result.getFeedbackMessage());
+			}
+		});
 	}
 
 	/**
@@ -320,69 +340,68 @@ public class AccessDeniedPlugin extends Plugin
 		}
 
 		// Only modify menu if validation failed
-		if (!validationResult.isValid())
-		{
-			// Deprioritize the entrance interaction by moving "Walk here" to default position
-			MenuEntry[] menuEntries = client.getMenuEntries();
-			if (menuEntries == null || menuEntries.length == 0)
-			{
-				return;
-			}
-
-			// Find the "Walk here" entry
-			MenuEntry walkHereEntry = null;
-			int walkHereIndex = -1;
-			
-			for (int i = 0; i < menuEntries.length; i++)
-			{
-				if (menuEntries[i].getType() == MenuAction.WALK)
-				{
-					walkHereEntry = menuEntries[i];
-					walkHereIndex = i;
-					break;
-				}
-			}
-
-			// Move "Walk here" to the end (default left-click position) if not already there
-			if (walkHereEntry != null && walkHereIndex < menuEntries.length - 1)
-			{
-				MenuEntry[] reorderedEntries = new MenuEntry[menuEntries.length];
-				int newIndex = 0;
-				
-				// Copy all entries except "Walk here"
-				for (int i = 0; i < menuEntries.length; i++)
-				{
-					if (i != walkHereIndex)
-					{
-						reorderedEntries[newIndex++] = menuEntries[i];
-					}
-				}
-				
-				// Place "Walk here" at the end
-				reorderedEntries[menuEntries.length - 1] = walkHereEntry;
-				client.setMenuEntries(reorderedEntries);
-			}
-
-			// Display feedback message once per validation state
-			if (!Boolean.TRUE.equals(menuModifiedState.get(currentLocation.getId())))
-			{
-				String message = validationResult.getFeedbackMessage();
-				if (message != null && !message.isEmpty())
-				{
-					client.addChatMessage(
-						ChatMessageType.GAMEMESSAGE,
-						"",
-						message,
-						null
-					);
-				}
-				menuModifiedState.put(currentLocation.getId(), true);
-			}
-		}
-		else
+		if (validationResult.isValid())
 		{
 			// Validation passed - reset menu modified state
 			menuModifiedState.remove(currentLocation.getId());
+			return;
+		}
+
+		// Validation failed - deprioritize the entrance interaction
+		MenuEntry[] menuEntries = client.getMenuEntries();
+		if (menuEntries == null || menuEntries.length == 0)
+		{
+			return;
+		}
+
+		// Find the "Walk here" entry
+		MenuEntry walkHereEntry = null;
+		int walkHereIndex = -1;
+		
+		for (int i = 0; i < menuEntries.length; i++)
+		{
+			if (menuEntries[i].getType() == MenuAction.WALK)
+			{
+				walkHereEntry = menuEntries[i];
+				walkHereIndex = i;
+				break;
+			}
+		}
+
+		// Move "Walk here" to the end (default left-click position) if not already there
+		if (walkHereEntry != null && walkHereIndex < menuEntries.length - 1)
+		{
+			MenuEntry[] reorderedEntries = new MenuEntry[menuEntries.length];
+			int newIndex = 0;
+			
+			// Copy all entries except "Walk here"
+			for (int i = 0; i < menuEntries.length; i++)
+			{
+				if (i != walkHereIndex)
+				{
+					reorderedEntries[newIndex++] = menuEntries[i];
+				}
+			}
+			
+			// Place "Walk here" at the end
+			reorderedEntries[menuEntries.length - 1] = walkHereEntry;
+			client.setMenuEntries(reorderedEntries);
+		}
+
+		// Display feedback message once per validation state
+		if (!Boolean.TRUE.equals(menuModifiedState.get(currentLocation.getId())))
+		{
+			String message = validationResult.getFeedbackMessage();
+			if (message != null && !message.isEmpty())
+			{
+				client.addChatMessage(
+					ChatMessageType.GAMEMESSAGE,
+					"",
+					message,
+					null
+				);
+			}
+			menuModifiedState.put(currentLocation.getId(), true);
 		}
 	}
 

@@ -122,19 +122,14 @@ public class PlayerStateValidator
 			int available = totalRunes.getOrDefault(runeId, 0);
 
 			// For Soul and Cosmic runes, aether runes can substitute
-			if (runeId == SOUL_RUNE_ID || runeId == COSMIC_RUNE_ID)
+			if ((runeId == SOUL_RUNE_ID || runeId == COSMIC_RUNE_ID) && available < required)
 			{
 				// Calculate how many aether runes we can still use
 				int aetherAvailable = aetherCount - aetherUsed;
-				
-				// If we don't have enough of the specific rune, try to use aether
-				if (available < required)
-				{
-					int shortage = required - available;
-					int aetherToUse = Math.min(shortage, aetherAvailable);
-					available += aetherToUse;
-					aetherUsed += aetherToUse;
-				}
+				int shortage = required - available;
+				int aetherToUse = Math.min(shortage, aetherAvailable);
+				available += aetherToUse;
+				aetherUsed += aetherToUse;
 			}
 
 			log.debug("  Rune {} - need {}, have {} (aether used so far: {})", 
@@ -255,13 +250,15 @@ public class PlayerStateValidator
 
 			log.debug("  Slot {} - Varbit value (enum key): {}, Amount: {}", i + 1, runeEnumKey, amount);
 
-			if (runeEnumKey > 0 && amount > 0)
+			if (runeEnumKey <= 0 || amount <= 0)
 			{
-				// Map the enum key to the actual item ID
-				int itemId = runepouchEnum.getIntValue(runeEnumKey);
-				log.debug("    -> Mapped to ItemID: {}", itemId);
-				contents.put(itemId, amount);
+				continue;
 			}
+
+			// Map the enum key to the actual item ID
+			int itemId = runepouchEnum.getIntValue(runeEnumKey);
+			log.debug("    -> Mapped to ItemID: {}", itemId);
+			contents.put(itemId, amount);
 		}
 
 		log.debug("Rune pouch total: {} different rune types", contents.size());

@@ -26,4 +26,16 @@ public interface AccessDeniedConfig extends Config
 	{
 		return false;
 	}
+
+	@ConfigItem(
+		keyName = "nexRequireDeathCharge",
+		name = "Require Death Charge",
+		description = "Require the ability to cast Death Charge spell (checks if you have the required runes)",
+		section = nexSection,
+		position = 2
+	)
+	default boolean nexRequireDeathCharge()
+	{
+		return false;
+	}
 }

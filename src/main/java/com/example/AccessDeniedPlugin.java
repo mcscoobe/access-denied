@@ -196,10 +196,26 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		// If the config changed for the current location, clear cache and revalidate on client thread
-		if ("nexRequireSpell".equals(event.getKey()) && "nex".equals(currentLocation.getId()))
+		// Check if the config change affects the current location
+		boolean shouldRevalidate = false;
+		String locationId = currentLocation.getId();
+		
+		switch (locationId)
 		{
-			log.info("Nex requirement config changed to: {}, clearing cache and revalidating", config.nexRequireSpell());
+			case "nex":
+				shouldRevalidate = "nexRequireSpell".equals(event.getKey()) 
+					|| "nexRequireDeathCharge".equals(event.getKey());
+				break;
+			// Future locations can be added here:
+			// case "colosseum":
+			//     shouldRevalidate = "colosseumRequireSpell".equals(event.getKey());
+			//     break;
+		}
+
+		if (shouldRevalidate)
+		{
+			log.info("{} requirement config changed, clearing cache and revalidating", 
+				currentLocation.getDisplayName());
 			
 			// Clear the cached validation result immediately so menu entries will trigger revalidation
 			validationCache.remove(currentLocation.getId());
@@ -360,7 +376,7 @@ public class AccessDeniedPlugin extends Plugin
 
 	/**
 	 * Validate requirements for the current location.
-	 * This is called on every menu entry to ensure real-time validation.
+	 * This delegates to location-specific validation methods.
 	 */
 	private void validateCurrentLocation()
 	{
@@ -388,22 +404,123 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		// Check if player has required runes by counting them directly
-		log.debug("Checking requirements for Resurrect Greater Ghost spell");
-		
-		boolean hasRunes = playerStateValidator.hasResurrectGreaterGhostRunes();
-		boolean hasBook = playerStateValidator.hasBookOfTheDead();
-		boolean hasSpellbook = playerStateValidator.isOnArceuusSpellbook();
+		// Delegate to location-specific validation
+		ValidationResult validationResult = validateLocationRequirements(currentLocation);
 
-		log.debug("Has required runes: {}", hasRunes);
-		log.debug("Has Book of the Dead: {}", hasBook);
+		// Cache the result
+		validationCache.put(currentLocation.getId(), validationResult);
+		log.debug("=== Validation complete, result cached ===");
+	}
+
+	/**
+	 * Validate requirements for a specific location.
+	 * This method delegates to location-specific validation logic.
+	 * 
+	 * @param location The location to validate
+	 * @return ValidationResult indicating whether requirements are met
+	 */
+	private ValidationResult validateLocationRequirements(BossLocation location)
+	{
+		// Delegate to location-specific validation methods
+		switch (location.getId())
+		{
+			case "nex":
+				return validateNexRequirements();
+			
+			// Future locations can be added here:
+			// case "colosseum":
+			//     return validateColosseumRequirements();
+			// case "inferno":
+			//     return validateInfernoRequirements();
+			
+			default:
+				log.warn("No validation logic implemented for location: {}", location.getId());
+				return new ValidationResult(
+					true,
+					java.util.Collections.emptySet(),
+					"No validation logic implemented",
+					new HashMap<>()
+				);
+		}
+	}
+
+	/**
+	 * Validate Nex-specific requirements.
+	 * Can require either Resurrect Greater Ghost spell or Death Charge spell (or both).
+	 * - Resurrect Greater Ghost requires: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, Arceuus spellbook
+	 * - Death Charge requires: 1 Death rune, 1 Blood rune, 1 Soul rune, Arceuus spellbook
+	 * Aether runes count as both Soul and Cosmic runes.
+	 */
+	private ValidationResult validateNexRequirements()
+	{
+		boolean requireThralls = config.nexRequireSpell();
+		boolean requireDeathCharge = config.nexRequireDeathCharge();
+
+		log.debug("Checking Nex requirements - Thralls: {}, Death Charge: {}", requireThralls, requireDeathCharge);
+
+		// Check spellbook (required for both)
+		boolean hasSpellbook = playerStateValidator.isOnArceuusSpellbook();
 		log.debug("On Arceuus spellbook: {}", hasSpellbook);
 
-		ValidationResult validationResult;
-		if (hasRunes && hasBook && hasSpellbook)
+		// Track what's missing
+		java.util.List<String> missing = new java.util.ArrayList<>();
+
+		// Check thrall requirements if enabled
+		boolean thrallsValid = true;
+		if (requireThralls)
 		{
-			log.debug("Validation PASSED for {}: Has all requirements for Resurrect Greater Ghost", currentLocation.getDisplayName());
-			validationResult = new ValidationResult(
+			boolean hasThralRunes = playerStateValidator.hasResurrectGreaterGhostRunes();
+			boolean hasBook = playerStateValidator.hasBookOfTheDead();
+
+			log.debug("Thralls - Has runes: {}, Has Book: {}", hasThralRunes, hasBook);
+
+			if (!hasThralRunes)
+			{
+				missing.add("runes for Resurrect Greater Ghost");
+				thrallsValid = false;
+			}
+			if (!hasBook)
+			{
+				missing.add("Book of the Dead");
+				thrallsValid = false;
+			}
+		}
+
+		// Check death charge requirements if enabled
+		boolean deathChargeValid = true;
+		if (requireDeathCharge)
+		{
+			boolean hasDeathChargeRunes = playerStateValidator.hasDeathChargeRunes();
+			log.debug("Death Charge - Has runes: {}", hasDeathChargeRunes);
+
+			if (!hasDeathChargeRunes)
+			{
+				missing.add("runes for Death Charge");
+				deathChargeValid = false;
+			}
+		}
+
+		// Check spellbook
+		if (!hasSpellbook)
+		{
+			missing.add("Arceuus spellbook");
+		}
+
+		// Determine if validation passed
+		boolean allValid = hasSpellbook;
+		if (requireThralls)
+		{
+			allValid = allValid && thrallsValid;
+		}
+		if (requireDeathCharge)
+		{
+			allValid = allValid && deathChargeValid;
+		}
+
+		if (allValid)
+		{
+			log.debug("Validation PASSED for Nex: Has all requirements");
+			return new ValidationResult(
 				true,
 				java.util.Collections.emptySet(),
 				"All requirements met",
@@ -413,37 +530,16 @@ public class AccessDeniedPlugin extends Plugin
 		else
 		{
 			// Build specific failure message
-			StringBuilder failureMessage = new StringBuilder("Missing: ");
-			java.util.List<String> missing = new java.util.ArrayList<>();
-			
-			if (!hasRunes)
-			{
-				missing.add("required runes");
-			}
-			if (!hasBook)
-			{
-				missing.add("Book of the Dead");
-			}
-			if (!hasSpellbook)
-			{
-				missing.add("Arceuus spellbook");
-			}
-			
-			failureMessage.append(String.join(", ", missing));
-			failureMessage.append(" for Resurrect Greater Ghost");
+			String failureMessage = "Missing: " + String.join(", ", missing);
 
-			log.debug("Validation FAILED for {}: {}", currentLocation.getDisplayName(), failureMessage);
-			validationResult = new ValidationResult(
+			log.debug("Validation FAILED for Nex: {}", failureMessage);
+			return new ValidationResult(
 				false,
-				java.util.Collections.singleton(failureMessage.toString()),
-				failureMessage.toString(),
+				java.util.Collections.singleton(failureMessage),
+				failureMessage,
 				new HashMap<>()
 			);
 		}
-
-		// Cache the result
-		validationCache.put(currentLocation.getId(), validationResult);
-		log.debug("=== Validation complete, result cached ===");
 	}
 
 	/**
@@ -451,14 +547,24 @@ public class AccessDeniedPlugin extends Plugin
 	 */
 	private boolean isValidationRequired(BossLocation location)
 	{
-		// For now, only Nex has configurable validation
-		if ("nex".equals(location.getId()))
+		if (location == null)
 		{
-			return config.nexRequireSpell();
+			return false;
 		}
 
-		// Future locations can be added here
-		return false;
+		// Check config for each location
+		switch (location.getId())
+		{
+			case "nex":
+				return config.nexRequireSpell() || config.nexRequireDeathCharge();
+			// Future locations can be added here:
+			// case "colosseum":
+			//     return config.colosseumRequireSpell();
+			// case "inferno":
+			//     return config.infernoRequireSpell();
+			default:
+				return false;
+		}
 	}
 
 	/**

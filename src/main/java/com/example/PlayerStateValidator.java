@@ -52,6 +52,7 @@ public class PlayerStateValidator
 	/**
 	 * Check if the player has the required runes to cast Resurrect Greater Ghost.
 	 * Resurrect Greater Ghost requires: 4 Soul runes, 2 Blood runes, 1 Cosmic rune
+	 * Aether runes count as both Soul and Cosmic runes.
 	 * 
 	 * @return true if the player has sufficient runes, false otherwise
 	 */
@@ -63,22 +64,81 @@ public class PlayerStateValidator
 		requiredRunes.put(565, 2);  // Blood rune
 		requiredRunes.put(564, 1);  // Cosmic rune
 
+		log.debug("Checking Resurrect Greater Ghost runes:");
+		log.debug("  Required: Soul x4, Blood x2, Cosmic x1");
+
+		return hasRequiredRunesWithAether(requiredRunes, "Resurrect Greater Ghost");
+	}
+
+	/**
+	 * Check if the player has the required runes to cast Death Charge.
+	 * Death Charge requires: 1 Death rune, 1 Blood rune, 1 Soul rune
+	 * Aether runes count as both Soul and Cosmic runes.
+	 * 
+	 * @return true if the player has sufficient runes, false otherwise
+	 */
+	public boolean hasDeathChargeRunes()
+	{
+		// Required runes for Death Charge
+		Map<Integer, Integer> requiredRunes = new HashMap<>();
+		requiredRunes.put(560, 1);  // Death rune
+		requiredRunes.put(565, 1);  // Blood rune
+		requiredRunes.put(566, 1);  // Soul rune
+
+		log.debug("Checking Death Charge runes:");
+		log.debug("  Required: Death x1, Blood x1, Soul x1");
+
+		return hasRequiredRunesWithAether(requiredRunes, "Death Charge");
+	}
+
+	/**
+	 * Check if the player has the required runes, accounting for Aether runes.
+	 * Aether runes (ID 30843) count as both Soul runes (566) and Cosmic runes (564).
+	 * 
+	 * @param requiredRunes Map of rune ID to required quantity
+	 * @param spellName Name of the spell for logging purposes
+	 * @return true if the player has sufficient runes, false otherwise
+	 */
+	private boolean hasRequiredRunesWithAether(Map<Integer, Integer> requiredRunes, String spellName)
+	{
+		final int SOUL_RUNE_ID = 566;
+		final int COSMIC_RUNE_ID = 564;
+		final int AETHER_RUNE_ID = 30843;
+
 		// Get total rune counts from all sources
 		Map<Integer, Integer> totalRunes = getTotalRuneCounts();
 
-		log.debug("Checking Resurrect Greater Ghost runes:");
-		log.debug("  Required: Soul x4, Blood x2, Cosmic x1");
-		log.debug("  Available: Soul x{}, Blood x{}, Cosmic x{}", 
-			totalRunes.getOrDefault(566, 0),
-			totalRunes.getOrDefault(565, 0),
-			totalRunes.getOrDefault(564, 0));
+		// Get aether rune count
+		int aetherCount = totalRunes.getOrDefault(AETHER_RUNE_ID, 0);
 
-		// Check if we have enough of each required rune
+		// Track how many aether runes we've allocated
+		int aetherUsed = 0;
+
+		// Check each required rune
 		for (Map.Entry<Integer, Integer> entry : requiredRunes.entrySet())
 		{
 			int runeId = entry.getKey();
 			int required = entry.getValue();
 			int available = totalRunes.getOrDefault(runeId, 0);
+
+			// For Soul and Cosmic runes, aether runes can substitute
+			if (runeId == SOUL_RUNE_ID || runeId == COSMIC_RUNE_ID)
+			{
+				// Calculate how many aether runes we can still use
+				int aetherAvailable = aetherCount - aetherUsed;
+				
+				// If we don't have enough of the specific rune, try to use aether
+				if (available < required)
+				{
+					int shortage = required - available;
+					int aetherToUse = Math.min(shortage, aetherAvailable);
+					available += aetherToUse;
+					aetherUsed += aetherToUse;
+				}
+			}
+
+			log.debug("  Rune {} - need {}, have {} (aether used so far: {})", 
+				runeId, required, available, aetherUsed);
 
 			if (available < required)
 			{
@@ -87,7 +147,7 @@ public class PlayerStateValidator
 			}
 		}
 
-		log.debug("  All runes available!");
+		log.debug("  All runes available for {}! (used {} aether runes)", spellName, aetherUsed);
 		return true;
 	}
 
@@ -231,25 +291,20 @@ public class PlayerStateValidator
 			return false;
 		}
 
-		log.debug("Checking for rune pouch in inventory:");
 		for (Item item : inventory.getItems())
 		{
 			int itemId = item.getId();
-			if (itemId > 0)
-			{
-				log.debug("  Found item ID: {}", itemId);
-			}
 			if (itemId == RUNE_POUCH_ID 
 				|| itemId == DIVINE_RUNE_POUCH_ID 
 				|| itemId == DIVINE_RUNE_POUCH_OLD_ID
 				|| itemId == DIVINE_RUNE_POUCH_LOCKED_ID)
 			{
-				log.debug("  -> Rune pouch found! (ID: {})", itemId);
+				log.debug("Rune pouch found in inventory (ID: {})", itemId);
 				return true;
 			}
 		}
 
-		log.debug("  -> No rune pouch found in inventory");
+		log.debug("No rune pouch found in inventory");
 		return false;
 	}
 }

@@ -30,7 +30,7 @@ dependencies {
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
 }
 
-group = 'com.example'
+group = 'com.osrs.accessdenied'
 version = '1.0-SNAPSHOT'
 
 task runTestClient(type: JavaExec) {
@@ -38,7 +38,7 @@ task runTestClient(type: JavaExec) {
 	description = 'Runs the AccessDeniedPluginTest main class'
 	dependsOn testClasses
 	classpath = sourceSets.test.runtimeClasspath
-	main = 'com.example.AccessDeniedPluginTest'
+	main = 'com.osrs.accessdenied.AccessDeniedPluginTest'
 	args = ['--developer-mode']
 	jvmArgs = [
 		'-ea',
@@ -59,7 +59,7 @@ test {
 tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath
 	manifest {
-		attributes('Main-Class': 'com.example.AccessDeniedPluginTest', 'Multi-Release': true)
+		attributes('Main-Class': 'com.osrs.accessdenied.AccessDeniedPluginTest', 'Multi-Release': true)
 	}
 
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE

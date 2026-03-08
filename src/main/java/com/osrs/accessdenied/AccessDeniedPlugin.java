@@ -1,4 +1,4 @@
-package com.example;
+package com.osrs.accessdenied;
 
 import com.google.inject.Provides;
 import javax.inject.Inject;
@@ -268,43 +268,46 @@ public class AccessDeniedPlugin extends Plugin
 
 	/**
 	 * Intercept menu entries to modify them based on cached validation results.
-	 * This runs on every mouseover but uses cached validation results.
+	 * Optimized to only process validated objects in boss locations.
 	 */
 	@Subscribe
 	public void onMenuEntryAdded(MenuEntryAdded event)
 	{
-		// Only process if we're in a boss location
+		// Early exit: Only process if we're in a boss location
 		if (currentLocation == null)
 		{
 			return;
 		}
 
-		// Check if validation is required for this location
+		// Early exit: Check if validation is required for this location
 		if (!isValidationRequired(currentLocation))
 		{
 			return;
 		}
 
-		// Filter for game object interactions
-		if (event.getType() != MenuAction.GAME_OBJECT_FIRST_OPTION.getId()
-			&& event.getType() != MenuAction.GAME_OBJECT_SECOND_OPTION.getId())
+		// Early exit: Filter for game object interactions only
+		int eventType = event.getType();
+		if (eventType != MenuAction.GAME_OBJECT_FIRST_OPTION.getId()
+			&& eventType != MenuAction.GAME_OBJECT_SECOND_OPTION.getId())
 		{
 			return;
 		}
 
+		// Early exit: Check if this specific object requires validation
 		int objectId = event.getIdentifier();
-		
-		// Check if this object requires validation in the current location
-		if (!BossLocations.isValidatedObject(currentLocation, objectId))
+		Integer validatedObjectId = BossLocations.getObjectForLocation(currentLocation);
+		if (validatedObjectId == null || validatedObjectId != objectId)
 		{
 			return;
 		}
 
-		// Get cached validation result for this location
+		// At this point, we know we're hovering over a validated object
+		// Get cached validation result (should already exist from region entry)
 		ValidationResult validationResult = validationCache.get(currentLocation.getId());
 		
 		if (validationResult == null)
 		{
+			// Shouldn't happen, but validate if needed
 			log.debug("No cached validation result for {}, validating now", currentLocation.getDisplayName());
 			validateCurrentLocation();
 			validationResult = validationCache.get(currentLocation.getId());
@@ -316,35 +319,37 @@ public class AccessDeniedPlugin extends Plugin
 			}
 		}
 
-		// If validation failed, modify the menu entry to "Walk here"
+		// Only modify menu if validation failed
 		if (!validationResult.isValid())
 		{
-			// Get the current menu entries
+			// Deprioritize the entrance interaction by moving "Walk here" to default position
 			MenuEntry[] menuEntries = client.getMenuEntries();
+			if (menuEntries == null || menuEntries.length == 0)
+			{
+				return;
+			}
 
-			// Find the "Walk here" entry (if it exists)
+			// Find the "Walk here" entry
 			MenuEntry walkHereEntry = null;
 			int walkHereIndex = -1;
 			
 			for (int i = 0; i < menuEntries.length; i++)
 			{
-				MenuEntry entry = menuEntries[i];
-				if (entry.getType() == MenuAction.WALK)
+				if (menuEntries[i].getType() == MenuAction.WALK)
 				{
-					walkHereEntry = entry;
+					walkHereEntry = menuEntries[i];
 					walkHereIndex = i;
 					break;
 				}
 			}
 
-			// If we found a "Walk here" entry and it's not already last, move it to the end
+			// Move "Walk here" to the end (default left-click position) if not already there
 			if (walkHereEntry != null && walkHereIndex < menuEntries.length - 1)
 			{
-				// Create a new array with "Walk here" at the end (last = default left-click)
 				MenuEntry[] reorderedEntries = new MenuEntry[menuEntries.length];
-				
-				// Copy all other entries, skipping the original "Walk here" position
 				int newIndex = 0;
+				
+				// Copy all entries except "Walk here"
 				for (int i = 0; i < menuEntries.length; i++)
 				{
 					if (i != walkHereIndex)
@@ -353,16 +358,14 @@ public class AccessDeniedPlugin extends Plugin
 					}
 				}
 				
-				// Put "Walk here" at the end (default left-click position)
+				// Place "Walk here" at the end
 				reorderedEntries[menuEntries.length - 1] = walkHereEntry;
-				
 				client.setMenuEntries(reorderedEntries);
 			}
 
-			// Only display feedback message once per validation
+			// Display feedback message once per validation state
 			if (!Boolean.TRUE.equals(menuModifiedState.get(currentLocation.getId())))
 			{
-				// Display simple message since we're not tracking individual runes
 				String message = validationResult.getFeedbackMessage();
 				if (message != null && !message.isEmpty())
 				{
@@ -378,7 +381,7 @@ public class AccessDeniedPlugin extends Plugin
 		}
 		else
 		{
-			// Validation passed - reset the menu modified state so if it fails later, message shows again
+			// Validation passed - reset menu modified state
 			menuModifiedState.remove(currentLocation.getId());
 		}
 	}

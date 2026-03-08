@@ -1,4 +1,4 @@
-package com.example;
+package com.osrs.accessdenied;
 
 import org.junit.Test;
 import java.util.Collections;

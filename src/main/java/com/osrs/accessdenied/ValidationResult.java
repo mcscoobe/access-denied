@@ -1,4 +1,4 @@
-package com.example;
+package com.osrs.accessdenied;
 
 import lombok.Value;
 

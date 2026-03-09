@@ -12,11 +12,12 @@ public class BossLocationsTest
 	@Test
 	public void testAllLocationsContainsExpectedLocations()
 	{
-		assertEquals(4, BossLocations.ALL_LOCATIONS.size());
+		assertEquals(5, BossLocations.ALL_LOCATIONS.size());
 		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.NEX));
 		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.THEATRE_OF_BLOOD));
 		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.TOMBS_OF_AMASCUT));
 		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.CHAMBERS_OF_XERIC));
+		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.INFERNO));
 	}
 
 	@Test
@@ -53,13 +54,23 @@ public class BossLocationsTest
 	}
 
 	@Test
+	public void testInfernoLocationProperties()
+	{
+		assertEquals("inferno", BossLocations.INFERNO.getId());
+		assertEquals("Inferno", BossLocations.INFERNO.getDisplayName());
+		assertTrue(BossLocations.INFERNO.isInRegion(10063));
+		assertTrue(BossLocations.INFERNO.isInRegion(9807));
+	}
+
+	@Test
 	public void testLocationObjectsMapping()
 	{
-		assertEquals(4, BossLocations.LOCATION_OBJECTS.size());
+		assertEquals(5, BossLocations.LOCATION_OBJECTS.size());
 		assertEquals(Integer.valueOf(42967), BossLocations.LOCATION_OBJECTS.get("nex"));
 		assertEquals(Integer.valueOf(32653), BossLocations.LOCATION_OBJECTS.get("tob"));
 		assertEquals(Integer.valueOf(46089), BossLocations.LOCATION_OBJECTS.get("toa"));
 		assertEquals(Integer.valueOf(29789), BossLocations.LOCATION_OBJECTS.get("cox"));
+		assertEquals(Integer.valueOf(30352), BossLocations.LOCATION_OBJECTS.get("inferno"));
 	}
 
 	@Test
@@ -80,6 +91,10 @@ public class BossLocationsTest
 		BossLocation cox = BossLocations.findByRegion(13393);
 		assertNotNull(cox);
 		assertEquals("cox", cox.getId());
+
+		BossLocation inferno = BossLocations.findByRegion(10063);
+		assertNotNull(inferno);
+		assertEquals("inferno", inferno.getId());
 	}
 
 	@Test
@@ -132,6 +147,9 @@ public class BossLocationsTest
 
 		Integer coxObject = BossLocations.getObjectForLocation(BossLocations.CHAMBERS_OF_XERIC);
 		assertEquals(Integer.valueOf(29789), coxObject);
+
+		Integer infernoObject = BossLocations.getObjectForLocation(BossLocations.INFERNO);
+		assertEquals(Integer.valueOf(30352), infernoObject);
 	}
 
 	@Test
@@ -153,6 +171,7 @@ public class BossLocationsTest
 
 		assertTrue(BossLocations.isValidatedObject(BossLocations.TOMBS_OF_AMASCUT, 46089));
 		assertTrue(BossLocations.isValidatedObject(BossLocations.CHAMBERS_OF_XERIC, 29789));
+		assertTrue(BossLocations.isValidatedObject(BossLocations.INFERNO, 30352));
 	}
 
 	@Test
@@ -168,5 +187,6 @@ public class BossLocationsTest
 		assertEquals(32653, BossLocations.TOB_OBJECT);
 		assertEquals(46089, BossLocations.TOA_OBJECT);
 		assertEquals(29789, BossLocations.COX_OBJECT);
+		assertEquals(30352, BossLocations.INFERNO_OBJECT);
 	}
 }

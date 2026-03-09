@@ -179,4 +179,47 @@ public interface AccessDeniedConfig extends Config
 	{
 		return false;
 	}
+
+	@ConfigSection(
+		name = "Inferno",
+		description = "Configuration for Inferno requirements",
+		position = 4
+	)
+	String infernoSection = "inferno";
+
+	@ConfigItem(
+		keyName = "infernoEnabled",
+		name = "Enable Validation",
+		description = "Enable validation for Inferno (master toggle). At least one requirement below must be enabled for validation to work.",
+		section = infernoSection,
+		position = 0
+	)
+	default boolean infernoEnabled()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "infernoRequireIceBarrage",
+		name = "Require Ice Barrage",
+		description = "Require the ability to cast Ice Barrage spell. Checks for: 6 Water runes, 2 Death runes, 4 Blood runes, and Ancient spellbook. Kodai wand provides infinite water runes.",
+		section = infernoSection,
+		position = 1
+	)
+	default boolean infernoRequireIceBarrage()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "infernoRequireBloodBarrage",
+		name = "Require Blood Barrage",
+		description = "Require the ability to cast Blood Barrage spell. Checks for: 4 Blood runes, 1 Soul rune, 1 Death rune, and Ancient spellbook. Aether runes can substitute for Soul runes.",
+		section = infernoSection,
+		position = 2
+	)
+	default boolean infernoRequireBloodBarrage()
+	{
+		return false;
+	}
 }

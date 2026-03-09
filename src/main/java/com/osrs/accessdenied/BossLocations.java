@@ -54,6 +54,16 @@ public class BossLocations
 	);
 
 	/**
+	 * Inferno challenge location
+	 * Region IDs: 10063, 9807
+	 */
+	public static final BossLocation INFERNO = new BossLocation(
+		"inferno",
+		"Inferno",
+		new HashSet<>(Arrays.asList(10063, 9807))
+	);
+
+	/**
 	 * Game object ID that requires validation within the Nex region.
 	 * Object ID 42967 = NEX_FIGHT_BARRIER (room available)
 	 * Object ID 42968 = NEX_FIGHT_BARRIER_BUSY (room busy) - not validated
@@ -79,6 +89,12 @@ public class BossLocations
 	public static final int COX_OBJECT = 29789;
 
 	/**
+	 * Game object ID that requires validation within the Inferno region.
+	 * Object ID 30352 = INFERNO_ENTRANCE
+	 */
+	public static final int INFERNO_OBJECT = 30352;
+
+	/**
 	 * All supported boss locations.
 	 * Add new locations to this set as they are implemented.
 	 */
@@ -96,6 +112,7 @@ public class BossLocations
 		locations.add(THEATRE_OF_BLOOD);
 		locations.add(TOMBS_OF_AMASCUT);
 		locations.add(CHAMBERS_OF_XERIC);
+		locations.add(INFERNO);
 		
 		ALL_LOCATIONS = Collections.unmodifiableSet(locations);
 
@@ -105,6 +122,7 @@ public class BossLocations
 		objectMap.put(THEATRE_OF_BLOOD.getId(), TOB_OBJECT);
 		objectMap.put(TOMBS_OF_AMASCUT.getId(), TOA_OBJECT);
 		objectMap.put(CHAMBERS_OF_XERIC.getId(), COX_OBJECT);
+		objectMap.put(INFERNO.getId(), INFERNO_OBJECT);
 		
 		LOCATION_OBJECTS = Collections.unmodifiableMap(objectMap);
 	}

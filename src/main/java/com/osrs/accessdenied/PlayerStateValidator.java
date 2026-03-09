@@ -33,7 +33,7 @@ public class PlayerStateValidator
 
 	/**
 	 * Check if the player is on the Arceuus spellbook.
-	 * Arceuus spellbook is required to cast Resurrect Greater Ghost.
+	 * Arceuus spellbook is required to cast Thralls.
 	 * 
 	 * @return true if the player is on the Arceuus spellbook, false otherwise
 	 */
@@ -68,24 +68,24 @@ public class PlayerStateValidator
 	}
 
 	/**
-	 * Check if the player has the required runes to cast Resurrect Greater Ghost.
-	 * Resurrect Greater Ghost requires: 4 Soul runes, 2 Blood runes, 1 Cosmic rune
+	 * Check if the player has the required runes to cast Thralls.
+	 * Thralls requires: 4 Soul runes, 2 Blood runes, 1 Cosmic rune
 	 * Aether runes count as both Soul and Cosmic runes.
 	 * 
 	 * @return true if the player has sufficient runes, false otherwise
 	 */
 	public boolean hasResurrectGreaterGhostRunes()
 	{
-		// Required runes for Resurrect Greater Ghost
+		// Required runes for Thralls
 		Map<Integer, Integer> requiredRunes = new HashMap<>();
 		requiredRunes.put(566, 4);  // Soul rune
 		requiredRunes.put(565, 2);  // Blood rune
 		requiredRunes.put(564, 1);  // Cosmic rune
 
-		log.debug("Checking Resurrect Greater Ghost runes:");
+		log.debug("Checking Thralls runes:");
 		log.debug("  Required: Soul x4, Blood x2, Cosmic x1");
 
-		return hasRequiredRunesWithAether(requiredRunes, "Resurrect Greater Ghost");
+		return hasRequiredRunesWithAether(requiredRunes, "Thralls");
 	}
 
 	/**
@@ -317,7 +317,7 @@ public class PlayerStateValidator
 
 	/**
 	 * Check if the player has a Book of the Dead in their inventory.
-	 * Book of the Dead is required to cast Resurrect Greater Ghost.
+	 * Book of the Dead is required to cast Thralls.
 	 * 
 	 * @return true if the player has a Book of the Dead, false otherwise
 	 */

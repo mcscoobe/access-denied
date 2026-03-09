@@ -29,8 +29,8 @@ public interface AccessDeniedConfig extends Config
 
 	@ConfigItem(
 		keyName = "nexRequireSpell",
-		name = "Require Resurrect Greater Ghost",
-		description = "Require the ability to cast Resurrect Greater Ghost spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		name = "Require Thralls",
+		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
 		section = nexSection,
 		position = 1
 	)
@@ -72,8 +72,8 @@ public interface AccessDeniedConfig extends Config
 
 	@ConfigItem(
 		keyName = "tobRequireSpell",
-		name = "Require Resurrect Greater Ghost",
-		description = "Require the ability to cast Resurrect Greater Ghost spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		name = "Require Thralls",
+		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
 		section = tobSection,
 		position = 1
 	)
@@ -115,8 +115,8 @@ public interface AccessDeniedConfig extends Config
 
 	@ConfigItem(
 		keyName = "toaRequireSpell",
-		name = "Require Resurrect Greater Ghost",
-		description = "Require the ability to cast Resurrect Greater Ghost spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		name = "Require Thralls",
+		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
 		section = toaSection,
 		position = 1
 	)
@@ -158,8 +158,8 @@ public interface AccessDeniedConfig extends Config
 
 	@ConfigItem(
 		keyName = "coxRequireSpell",
-		name = "Require Resurrect Greater Ghost",
-		description = "Require the ability to cast Resurrect Greater Ghost spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		name = "Require Thralls",
+		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
 		section = coxSection,
 		position = 1
 	)

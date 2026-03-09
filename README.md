@@ -20,7 +20,7 @@ Checks if you have the required runes, spellbook, and gear before entering boss 
 2. Open plugin configuration
 3. Choose a location (e.g., "Nex")
 4. Enable "Enable Validation"
-5. Enable at least one requirement (e.g., "Require Resurrect Greater Ghost")
+5. Enable at least one requirement (e.g., "Require Thralls")
 
 That's it! The plugin will now check your requirements when you try to enter.
 
@@ -44,14 +44,14 @@ At least one spell requirement must be enabled for validation to work.
 
 1. Go to "Nex" section in config
 2. Enable "Enable Validation" ✓
-3. Enable "Require Resurrect Greater Ghost" ✓
+3. Enable "Require Thralls" ✓
 4. Done! Plugin will check for thrall runes and Book of the Dead
 
 ## Spell Requirements
 
 ### Arceuus Spellbook (Nex, ToB, ToA, CoX)
 
-**Resurrect Greater Ghost:**
+**Thralls:**
 - 4 Soul, 2 Blood, 1 Cosmic runes
 - Book of the Dead
 - Aether runes work for Soul/Cosmic

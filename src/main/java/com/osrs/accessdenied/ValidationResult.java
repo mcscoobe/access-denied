@@ -18,7 +18,7 @@ public class ValidationResult
 	boolean valid;
 
 	/**
-	 * Set of missing requirements (e.g., "runes for Resurrect Greater Ghost", "Book of the Dead").
+	 * Set of missing requirements (e.g., "runes for Thralls", "Book of the Dead").
 	 * Empty when valid is true.
 	 */
 	Set<String> missingRequirements;

@@ -665,13 +665,13 @@ public class AccessDeniedPlugin extends Plugin
 
 	/**
 	 * Validate raid requirements (generic for all raids with thralls/death charge).
-	 * Can require either Resurrect Greater Ghost spell or Death Charge spell (or both).
-	 * - Resurrect Greater Ghost requires: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, Arceuus spellbook
+	 * Can require either Thralls spell or Death Charge spell (or both).
+	 * - Thralls requires: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, Arceuus spellbook
 	 * - Death Charge requires: 1 Death rune, 1 Blood rune, 1 Soul rune, Arceuus spellbook
 	 * Aether runes count as both Soul and Cosmic runes.
 	 * 
 	 * @param location The location being validated
-	 * @param requireThralls Whether to require Resurrect Greater Ghost
+	 * @param requireThralls Whether to require Thralls
 	 * @param requireDeathCharge Whether to require Death Charge
 	 * @return ValidationResult indicating whether requirements are met
 	 */
@@ -699,7 +699,7 @@ public class AccessDeniedPlugin extends Plugin
 
 			if (!hasThralRunes)
 			{
-				missing.add("runes for Resurrect Greater Ghost");
+				missing.add("runes for Thralls");
 				thrallsValid = false;
 			}
 			if (!hasBook)

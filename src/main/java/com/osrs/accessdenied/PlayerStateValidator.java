@@ -95,6 +95,17 @@ public class PlayerStateValidator
 	 * Check if the player has the required runes, accounting for Aether runes.
 	 * Aether runes (ID 30843) count as both Soul runes (566) and Cosmic runes (564).
 	 * 
+	 * Algorithm:
+	 * 1. Check each required rune type
+	 * 2. If Soul or Cosmic runes are short, try to make up the difference with Aether runes
+	 * 3. Track how many Aether runes have been "spent" on substitutions
+	 * 4. Fail if any requirement can't be met even with Aether substitution
+	 * 
+	 * Example: Need 4 Soul + 1 Cosmic, have 2 Soul + 3 Aether
+	 * - Soul: need 4, have 2, short by 2 → use 2 Aether (1 Aether remaining)
+	 * - Cosmic: need 1, have 0, short by 1 → use 1 Aether (0 Aether remaining)
+	 * - Result: PASS (all requirements met with Aether substitution)
+	 * 
 	 * @param requiredRunes Map of rune ID to required quantity
 	 * @param spellName Name of the spell for logging purposes
 	 * @return true if the player has sufficient runes, false otherwise
@@ -187,6 +198,12 @@ public class PlayerStateValidator
 	 * Get total rune counts from inventory, equipment, and rune pouch.
 	 * This method is called multiple times during validation, so results should be cached
 	 * at the validation level to avoid redundant inventory scans.
+	 * 
+	 * Sources checked:
+	 * 1. Inventory - loose runes and items
+	 * 2. Rune pouch - stored runes (if pouch is in inventory)
+	 * 
+	 * @return Map of rune ID to total quantity across all sources
 	 */
 	private Map<Integer, Integer> getTotalRuneCounts()
 	{
@@ -225,6 +242,15 @@ public class PlayerStateValidator
 	 * The varbit values are enum keys that need to be mapped to actual item IDs.
 	 * 
 	 * IMPORTANT: Only returns contents if the rune pouch is actually in the player's inventory.
+	 * This prevents reading stale varbit data when the pouch has been deposited.
+	 * 
+	 * Rune Pouch Storage:
+	 * - Up to 4 different rune types can be stored
+	 * - Each slot has a TYPE varbit (enum key) and QUANTITY varbit
+	 * - TYPE varbit of 0 means the slot is empty
+	 * - The enum maps varbit values to actual rune item IDs
+	 * 
+	 * @return Map of rune ID to quantity in the rune pouch
 	 */
 	private Map<Integer, Integer> getRunePouchContents()
 	{
@@ -291,6 +317,11 @@ public class PlayerStateValidator
 	 * - 27281: Divine rune pouch
 	 * - 27086: Divine rune pouch (old ID, may be deprecated)
 	 * - 27509: Divine rune pouch (locked)
+	 * 
+	 * This check is critical because rune pouch varbits persist even after
+	 * the pouch is deposited, so we must verify the pouch is actually present.
+	 * 
+	 * @return true if any rune pouch variant is in inventory, false otherwise
 	 */
 	private boolean hasRunePouchInInventory()
 	{

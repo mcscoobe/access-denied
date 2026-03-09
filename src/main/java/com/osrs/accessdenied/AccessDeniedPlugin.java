@@ -167,7 +167,8 @@ public class AccessDeniedPlugin extends Plugin
 		// Clear the menu modified state so the message can be shown again if validation state changed
 		menuModifiedState.remove(currentLocation.getId());
 		
-		validateCurrentLocation();
+		// Schedule validation on client thread to avoid race conditions
+		clientThread.invokeLater(this::validateCurrentLocation);
 	}
 
 	/**
@@ -203,7 +204,9 @@ public class AccessDeniedPlugin extends Plugin
 
 		log.debug("Rune pouch/spellbook varbit {} changed while in {} region, revalidating", 
 			varbitId, currentLocation.getDisplayName());
-		validateCurrentLocation();
+		
+		// Schedule validation on client thread to avoid race conditions
+		clientThread.invokeLater(this::validateCurrentLocation);
 	}
 
 	/**
@@ -217,6 +220,9 @@ public class AccessDeniedPlugin extends Plugin
 		{
 			return;
 		}
+
+		// Check for invalid configuration (location enabled but no requirements set)
+		validateConfiguration(event.getKey());
 
 		// Only revalidate if we're currently in a boss location
 		if (currentLocation == null)
@@ -232,19 +238,23 @@ public class AccessDeniedPlugin extends Plugin
 		switch (locationId)
 		{
 			case "nex":
-				shouldRevalidate = "nexRequireSpell".equals(configKey) 
+				shouldRevalidate = "nexEnabled".equals(configKey)
+					|| "nexRequireSpell".equals(configKey) 
 					|| "nexRequireDeathCharge".equals(configKey);
 				break;
 			case "tob":
-				shouldRevalidate = "tobRequireSpell".equals(configKey) 
+				shouldRevalidate = "tobEnabled".equals(configKey)
+					|| "tobRequireSpell".equals(configKey) 
 					|| "tobRequireDeathCharge".equals(configKey);
 				break;
 			case "toa":
-				shouldRevalidate = "toaRequireSpell".equals(configKey) 
+				shouldRevalidate = "toaEnabled".equals(configKey)
+					|| "toaRequireSpell".equals(configKey) 
 					|| "toaRequireDeathCharge".equals(configKey);
 				break;
 			case "cox":
-				shouldRevalidate = "coxRequireSpell".equals(configKey) 
+				shouldRevalidate = "coxEnabled".equals(configKey)
+					|| "coxRequireSpell".equals(configKey) 
 					|| "coxRequireDeathCharge".equals(configKey);
 				break;
 		}
@@ -252,6 +262,66 @@ public class AccessDeniedPlugin extends Plugin
 		if (shouldRevalidate)
 		{
 			handleConfigRevalidation();
+		}
+	}
+
+	/**
+	 * Validate configuration to ensure at least one requirement is enabled when a location is enabled.
+	 * Shows a warning message if configuration is invalid.
+	 * 
+	 * @param configKey The configuration key that was changed
+	 */
+	private void validateConfiguration(String configKey)
+	{
+		// Check if a master toggle was just enabled
+		boolean isMasterToggle = configKey.endsWith("Enabled");
+		if (!isMasterToggle)
+		{
+			return;
+		}
+
+		// Determine which location and check if it has any requirements enabled
+		String locationName = null;
+		boolean hasRequirements = false;
+
+		if ("nexEnabled".equals(configKey) && config.nexEnabled())
+		{
+			locationName = "Nex";
+			hasRequirements = config.nexRequireSpell() || config.nexRequireDeathCharge();
+		}
+		else if ("tobEnabled".equals(configKey) && config.tobEnabled())
+		{
+			locationName = "Theatre of Blood";
+			hasRequirements = config.tobRequireSpell() || config.tobRequireDeathCharge();
+		}
+		else if ("toaEnabled".equals(configKey) && config.toaEnabled())
+		{
+			locationName = "Tombs of Amascut";
+			hasRequirements = config.toaRequireSpell() || config.toaRequireDeathCharge();
+		}
+		else if ("coxEnabled".equals(configKey) && config.coxEnabled())
+		{
+			locationName = "Chambers of Xeric";
+			hasRequirements = config.coxRequireSpell() || config.coxRequireDeathCharge();
+		}
+
+		// Show warning if location is enabled but no requirements are set
+		if (locationName != null && !hasRequirements)
+		{
+			String warningMessage = String.format(
+				"<col=ff0000>Warning: %s validation is enabled but no requirements are configured. " +
+				"Enable at least one requirement (Thralls or Death Charge) for validation to work.</col>",
+				locationName
+			);
+			
+			client.addChatMessage(
+				ChatMessageType.GAMEMESSAGE,
+				"",
+				warningMessage,
+				null
+			);
+			
+			log.debug("Configuration warning: {} enabled with no requirements", locationName);
 		}
 	}
 
@@ -392,6 +462,10 @@ public class AccessDeniedPlugin extends Plugin
 	 * Reorder menu entries to make "Walk here" the default left-click action.
 	 * This effectively deprioritizes other interactions when validation fails.
 	 * 
+	 * The menu system in RuneLite uses the last entry as the default left-click action.
+	 * By moving "Walk here" to the end, we prevent accidental boss entrance clicks
+	 * when the player doesn't meet requirements.
+	 * 
 	 * @param menuEntries The current menu entries
 	 */
 	private void reorderMenuToWalkHere(MenuEntry[] menuEntries)
@@ -432,6 +506,10 @@ public class AccessDeniedPlugin extends Plugin
 
 	/**
 	 * Get cached validation result if it exists and hasn't expired.
+	 * 
+	 * The cache prevents redundant validation checks when hovering over the same
+	 * entrance multiple times. Cache expires after 30 seconds to ensure validation
+	 * stays reasonably up-to-date with player state changes.
 	 * 
 	 * @return ValidationResult if valid cache exists, null otherwise
 	 */
@@ -669,6 +747,14 @@ public class AccessDeniedPlugin extends Plugin
 
 	/**
 	 * Check if validation is required for a specific location based on config.
+	 * Validation is required when:
+	 * 1. The location's master toggle is enabled, AND
+	 * 2. At least one specific requirement (thralls or death charge) is enabled
+	 * 
+	 * This prevents pointless validation when a location is enabled but no requirements are set.
+	 * 
+	 * @param location The location to check
+	 * @return true if validation should be performed, false otherwise
 	 */
 	private boolean isValidationRequired(BossLocation location)
 	{
@@ -677,17 +763,17 @@ public class AccessDeniedPlugin extends Plugin
 			return false;
 		}
 
-		// Check config for each location
+		// Check config for each location (master toggle AND specific requirements)
 		switch (location.getId())
 		{
 			case "nex":
-				return config.nexRequireSpell() || config.nexRequireDeathCharge();
+				return config.nexEnabled() && (config.nexRequireSpell() || config.nexRequireDeathCharge());
 			case "tob":
-				return config.tobRequireSpell() || config.tobRequireDeathCharge();
+				return config.tobEnabled() && (config.tobRequireSpell() || config.tobRequireDeathCharge());
 			case "toa":
-				return config.toaRequireSpell() || config.toaRequireDeathCharge();
+				return config.toaEnabled() && (config.toaRequireSpell() || config.toaRequireDeathCharge());
 			case "cox":
-				return config.coxRequireSpell() || config.coxRequireDeathCharge();
+				return config.coxEnabled() && (config.coxRequireSpell() || config.coxRequireDeathCharge());
 			default:
 				return false;
 		}
@@ -695,6 +781,14 @@ public class AccessDeniedPlugin extends Plugin
 
 	/**
 	 * Check if two region arrays are equal.
+	 * Uses Set comparison to handle regions in any order.
+	 * 
+	 * This is important because the client may return regions in different orders
+	 * depending on the player's position, but the actual set of regions is what matters.
+	 * 
+	 * @param regions1 First region array
+	 * @param regions2 Second region array
+	 * @return true if both arrays contain the same regions (order-independent)
 	 */
 	private boolean regionsEqual(int[] regions1, int[] regions2)
 	{
@@ -710,14 +804,21 @@ public class AccessDeniedPlugin extends Plugin
 		{
 			return false;
 		}
-		for (int i = 0; i < regions1.length; i++)
+		
+		// Convert to sets for order-independent comparison
+		java.util.Set<Integer> set1 = new java.util.HashSet<>();
+		java.util.Set<Integer> set2 = new java.util.HashSet<>();
+		
+		for (int region : regions1)
 		{
-			if (regions1[i] != regions2[i])
-			{
-				return false;
-			}
+			set1.add(region);
 		}
-		return true;
+		for (int region : regions2)
+		{
+			set2.add(region);
+		}
+		
+		return set1.equals(set2);
 	}
 
 	@Provides

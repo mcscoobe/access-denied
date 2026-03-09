@@ -6,6 +6,7 @@ import net.runelite.api.EnumComposition;
 import net.runelite.api.EnumID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
+import net.runelite.api.Varbits;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarbitID;
 
@@ -38,12 +39,11 @@ public class PlayerStateValidator
 	 */
 	public boolean isOnArceuusSpellbook()
 	{
-		// Varbit 4070 tracks the current spellbook
+		// Varbits.SPELLBOOK tracks the current spellbook
 		// 0 = Standard, 1 = Ancient, 2 = Lunar, 3 = Arceuus
-		final int SPELLBOOK_VARBIT = 4070;
 		final int ARCEUUS_SPELLBOOK = 3;
 
-		int currentSpellbook = client.getVarbitValue(SPELLBOOK_VARBIT);
+		int currentSpellbook = client.getVarbitValue(Varbits.SPELLBOOK);
 		log.debug("Current spellbook varbit value: {} (3 = Arceuus)", currentSpellbook);
 
 		return currentSpellbook == ARCEUUS_SPELLBOOK;
@@ -163,9 +163,16 @@ public class PlayerStateValidator
 			return false;
 		}
 
-		for (Item item : inventory.getItems())
+		Item[] items = inventory.getItems();
+		if (items == null)
 		{
-			if (item.getId() == BOOK_OF_THE_DEAD_ID)
+			log.debug("Checking Book of the Dead: Items array is null");
+			return false;
+		}
+
+		for (Item item : items)
+		{
+			if (item != null && item.getId() == BOOK_OF_THE_DEAD_ID)
 			{
 				log.debug("Book of the Dead found in inventory");
 				return true;
@@ -178,6 +185,8 @@ public class PlayerStateValidator
 
 	/**
 	 * Get total rune counts from inventory, equipment, and rune pouch.
+	 * This method is called multiple times during validation, so results should be cached
+	 * at the validation level to avoid redundant inventory scans.
 	 */
 	private Map<Integer, Integer> getTotalRuneCounts()
 	{
@@ -187,11 +196,15 @@ public class PlayerStateValidator
 		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
 		if (inventory != null)
 		{
-			for (Item item : inventory.getItems())
+			Item[] items = inventory.getItems();
+			if (items != null)
 			{
-				if (item.getId() > 0)
+				for (Item item : items)
 				{
-					runeCounts.merge(item.getId(), item.getQuantity(), Integer::sum);
+					if (item != null && item.getId() > 0)
+					{
+						runeCounts.merge(item.getId(), item.getQuantity(), Integer::sum);
+					}
 				}
 			}
 		}
@@ -226,6 +239,11 @@ public class PlayerStateValidator
 
 		// Get the rune pouch enum to map varbit values to item IDs
 		EnumComposition runepouchEnum = client.getEnum(EnumID.RUNEPOUCH_RUNE);
+		if (runepouchEnum == null)
+		{
+			log.debug("Rune pouch enum not available");
+			return contents;
+		}
 
 		// Rune pouch uses varbits to store contents
 		// Use VarbitID constants from RuneLite API
@@ -288,8 +306,20 @@ public class PlayerStateValidator
 			return false;
 		}
 
-		for (Item item : inventory.getItems())
+		Item[] items = inventory.getItems();
+		if (items == null)
 		{
+			log.debug("Inventory items array is null");
+			return false;
+		}
+
+		for (Item item : items)
+		{
+			if (item == null)
+			{
+				continue;
+			}
+			
 			int itemId = item.getId();
 			if (itemId == RUNE_POUCH_ID 
 				|| itemId == DIVINE_RUNE_POUCH_ID 

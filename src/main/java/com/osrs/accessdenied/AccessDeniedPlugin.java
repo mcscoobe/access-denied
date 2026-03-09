@@ -8,6 +8,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
+import net.runelite.api.Varbits;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuEntryAdded;
@@ -48,7 +49,11 @@ public class AccessDeniedPlugin extends Plugin
 
 	// Validation state per location
 	private final Map<String, ValidationResult> validationCache = new HashMap<>();
+	private final Map<String, Long> validationCacheTimestamp = new HashMap<>();
 	private final Map<String, Boolean> menuModifiedState = new HashMap<>();
+	
+	// Cache expiration time in milliseconds (30 seconds)
+	private static final long CACHE_EXPIRATION_MS = 30_000;
 
 	@Override
 	protected void startUp() throws Exception
@@ -58,6 +63,7 @@ public class AccessDeniedPlugin extends Plugin
 		currentLocation = null;
 		currentRegions = null;
 		validationCache.clear();
+		validationCacheTimestamp.clear();
 		menuModifiedState.clear();
 	}
 
@@ -69,6 +75,7 @@ public class AccessDeniedPlugin extends Plugin
 		currentLocation = null;
 		currentRegions = null;
 		validationCache.clear();
+		validationCacheTimestamp.clear();
 		menuModifiedState.clear();
 	}
 
@@ -110,7 +117,7 @@ public class AccessDeniedPlugin extends Plugin
 		}
 
 		// Location changed
-		log.info("Region changed - Old location: {}, New location: {}", 
+		log.debug("Region changed - Old location: {}, New location: {}", 
 			currentLocation != null ? currentLocation.getDisplayName() : "none",
 			newLocation != null ? newLocation.getDisplayName() : "none");
 
@@ -119,15 +126,18 @@ public class AccessDeniedPlugin extends Plugin
 		// Validate if we entered a boss location
 		if (currentLocation != null)
 		{
-			log.info("Entered {} region, performing validation", currentLocation.getDisplayName());
+			log.debug("Entered {} region, performing validation", currentLocation.getDisplayName());
 			validateCurrentLocation();
 		}
 	}
 
 	/**
-	 * Listen for item container changes to detect when runes are added/removed.
-	 * This triggers revalidation when the player's inventory or equipment changes.
-	 * Also listens for bank changes to detect when rune pouch is deposited.
+	 * Listen for item container changes to detect when items are added/removed.
+	 * This handles:
+	 * - Book of the Dead changes (for thralls)
+	 * - Runes added/removed directly to inventory (not in rune pouch)
+	 * 
+	 * Note: Rune pouch changes are handled by onVarbitChanged for better efficiency.
 	 */
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
@@ -144,24 +154,30 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		// Check for inventory or bank changes
-		// Bank changes are important because depositing rune pouch clears the varbits
+		// Only care about inventory changes
 		int containerId = event.getContainerId();
-		if (containerId == InventoryID.INV || containerId == InventoryID.BANK)
+		if (containerId != InventoryID.INV)
 		{
-			log.debug("Inventory/Bank changed (container: {}) while in {} region, revalidating", 
-				containerId, currentLocation.getDisplayName());
-			
-			// Clear the menu modified state so the message can be shown again if validation state changed
-			menuModifiedState.remove(currentLocation.getId());
-			
-			validateCurrentLocation();
+			return;
 		}
+
+		log.debug("Inventory changed while in {} region, revalidating", 
+			currentLocation.getDisplayName());
+		
+		// Clear the menu modified state so the message can be shown again if validation state changed
+		menuModifiedState.remove(currentLocation.getId());
+		
+		validateCurrentLocation();
 	}
 
 	/**
 	 * Listen for varbit changes to detect when rune pouch contents or spellbook are updated.
-	 * This is the most reliable way to detect rune pouch and spellbook changes.
+	 * This is the primary mechanism for detecting rune-related changes.
+	 * 
+	 * Handles:
+	 * - Rune pouch contents changes (adding/removing runes)
+	 * - Spellbook changes (switching between spellbooks)
+	 * - Rune pouch being deposited/withdrawn (varbits clear/populate)
 	 */
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged event)
@@ -244,11 +260,12 @@ public class AccessDeniedPlugin extends Plugin
 	 */
 	private void handleConfigRevalidation()
 	{
-		log.info("{} requirement config changed, clearing cache and revalidating", 
+		log.debug("{} requirement config changed, clearing cache and revalidating", 
 			currentLocation.getDisplayName());
 		
-		// Clear the cached validation result immediately so menu entries will trigger revalidation
+		// Clear the cached validation result and timestamp
 		validationCache.remove(currentLocation.getId());
+		validationCacheTimestamp.remove(currentLocation.getId());
 		
 		// Clear the menu modified state so the message can be shown again if needed
 		menuModifiedState.remove(currentLocation.getId());
@@ -261,7 +278,7 @@ public class AccessDeniedPlugin extends Plugin
 			ValidationResult result = validationCache.get(currentLocation.getId());
 			if (result != null)
 			{
-				log.info("New validation state - Valid: {}, Message: {}", 
+				log.debug("New validation state - Valid: {}, Message: {}", 
 					result.isValid(), result.getFeedbackMessage());
 			}
 		});
@@ -272,9 +289,6 @@ public class AccessDeniedPlugin extends Plugin
 	 */
 	private boolean isRunePouchVarbit(int varbitId)
 	{
-		// Varbit 4070 tracks the current spellbook (0=Standard, 1=Ancient, 2=Lunar, 3=Arceuus)
-		final int SPELLBOOK_VARBIT = 4070;
-		
 		return varbitId == VarbitID.RUNE_POUCH_TYPE_1
 			|| varbitId == VarbitID.RUNE_POUCH_TYPE_2
 			|| varbitId == VarbitID.RUNE_POUCH_TYPE_3
@@ -283,7 +297,7 @@ public class AccessDeniedPlugin extends Plugin
 			|| varbitId == VarbitID.RUNE_POUCH_QUANTITY_2
 			|| varbitId == VarbitID.RUNE_POUCH_QUANTITY_3
 			|| varbitId == VarbitID.RUNE_POUCH_QUANTITY_4
-			|| varbitId == SPELLBOOK_VARBIT;
+			|| varbitId == Varbits.SPELLBOOK;
 	}
 
 	/**
@@ -323,12 +337,12 @@ public class AccessDeniedPlugin extends Plugin
 
 		// At this point, we know we're hovering over a validated object
 		// Get cached validation result (should already exist from region entry)
-		ValidationResult validationResult = validationCache.get(currentLocation.getId());
+		ValidationResult validationResult = getCachedValidationResult();
 		
 		if (validationResult == null)
 		{
-			// Shouldn't happen, but validate if needed
-			log.debug("No cached validation result for {}, validating now", currentLocation.getDisplayName());
+			// Cache expired or doesn't exist, validate now
+			log.debug("No valid cached result for {}, validating now", currentLocation.getDisplayName());
 			validateCurrentLocation();
 			validationResult = validationCache.get(currentLocation.getId());
 			
@@ -354,39 +368,8 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		// Find the "Walk here" entry
-		MenuEntry walkHereEntry = null;
-		int walkHereIndex = -1;
-		
-		for (int i = 0; i < menuEntries.length; i++)
-		{
-			if (menuEntries[i].getType() == MenuAction.WALK)
-			{
-				walkHereEntry = menuEntries[i];
-				walkHereIndex = i;
-				break;
-			}
-		}
-
-		// Move "Walk here" to the end (default left-click position) if not already there
-		if (walkHereEntry != null && walkHereIndex < menuEntries.length - 1)
-		{
-			MenuEntry[] reorderedEntries = new MenuEntry[menuEntries.length];
-			int newIndex = 0;
-			
-			// Copy all entries except "Walk here"
-			for (int i = 0; i < menuEntries.length; i++)
-			{
-				if (i != walkHereIndex)
-				{
-					reorderedEntries[newIndex++] = menuEntries[i];
-				}
-			}
-			
-			// Place "Walk here" at the end
-			reorderedEntries[menuEntries.length - 1] = walkHereEntry;
-			client.setMenuEntries(reorderedEntries);
-		}
+		// Find and move "Walk here" to the end (default left-click position)
+		reorderMenuToWalkHere(menuEntries);
 
 		// Display feedback message once per validation state
 		if (!Boolean.TRUE.equals(menuModifiedState.get(currentLocation.getId())))
@@ -403,6 +386,90 @@ public class AccessDeniedPlugin extends Plugin
 			}
 			menuModifiedState.put(currentLocation.getId(), true);
 		}
+	}
+
+	/**
+	 * Reorder menu entries to make "Walk here" the default left-click action.
+	 * This effectively deprioritizes other interactions when validation fails.
+	 * 
+	 * @param menuEntries The current menu entries
+	 */
+	private void reorderMenuToWalkHere(MenuEntry[] menuEntries)
+	{
+		// Find the "Walk here" entry
+		int walkHereIndex = -1;
+		for (int i = 0; i < menuEntries.length; i++)
+		{
+			if (menuEntries[i].getType() == MenuAction.WALK)
+			{
+				walkHereIndex = i;
+				break;
+			}
+		}
+
+		// If "Walk here" not found or already at the end, nothing to do
+		if (walkHereIndex == -1 || walkHereIndex == menuEntries.length - 1)
+		{
+			return;
+		}
+
+		// Move "Walk here" to the end by shifting other entries
+		MenuEntry walkHereEntry = menuEntries[walkHereIndex];
+		MenuEntry[] reorderedEntries = new MenuEntry[menuEntries.length];
+		
+		int newIndex = 0;
+		for (int i = 0; i < menuEntries.length; i++)
+		{
+			if (i != walkHereIndex)
+			{
+				reorderedEntries[newIndex++] = menuEntries[i];
+			}
+		}
+		reorderedEntries[menuEntries.length - 1] = walkHereEntry;
+		
+		client.setMenuEntries(reorderedEntries);
+	}
+
+	/**
+	 * Get cached validation result if it exists and hasn't expired.
+	 * 
+	 * @return ValidationResult if valid cache exists, null otherwise
+	 */
+	private ValidationResult getCachedValidationResult()
+	{
+		if (currentLocation == null)
+		{
+			return null;
+		}
+
+		String locationId = currentLocation.getId();
+		ValidationResult cached = validationCache.get(locationId);
+		
+		if (cached == null)
+		{
+			return null;
+		}
+
+		// Check if cache has expired
+		Long timestamp = validationCacheTimestamp.get(locationId);
+		if (timestamp == null)
+		{
+			// No timestamp, cache is invalid
+			validationCache.remove(locationId);
+			return null;
+		}
+
+		long age = System.currentTimeMillis() - timestamp;
+		if (age > CACHE_EXPIRATION_MS)
+		{
+			// Cache expired
+			log.debug("Validation cache expired for {} (age: {}ms)", locationId, age);
+			validationCache.remove(locationId);
+			validationCacheTimestamp.remove(locationId);
+			return null;
+		}
+
+		return cached;
 	}
 
 	/**
@@ -428,18 +495,19 @@ public class AccessDeniedPlugin extends Plugin
 			ValidationResult allowResult = new ValidationResult(
 				true, 
 				java.util.Collections.emptySet(), 
-				"No requirements configured", 
-				new HashMap<>()
+				"No requirements configured"
 			);
 			validationCache.put(currentLocation.getId(), allowResult);
+			validationCacheTimestamp.put(currentLocation.getId(), System.currentTimeMillis());
 			return;
 		}
 
 		// Delegate to location-specific validation
 		ValidationResult validationResult = validateLocationRequirements(currentLocation);
 
-		// Cache the result
+		// Cache the result with timestamp
 		validationCache.put(currentLocation.getId(), validationResult);
+		validationCacheTimestamp.put(currentLocation.getId(), System.currentTimeMillis());
 		log.debug("=== Validation complete, result cached ===");
 	}
 
@@ -452,10 +520,13 @@ public class AccessDeniedPlugin extends Plugin
 	 */
 	private ValidationResult validateLocationRequirements(BossLocation location)
 	{
+		log.debug("Delegating validation for location: {}", location.getId());
+		
 		// Delegate to location-specific validation methods
 		switch (location.getId())
 		{
 			case "nex":
+				log.debug("Validating Nex requirements");
 				return validateRaidRequirements(
 					location,
 					config.nexRequireSpell(),
@@ -463,6 +534,7 @@ public class AccessDeniedPlugin extends Plugin
 				);
 			
 			case "tob":
+				log.debug("Validating Theatre of Blood requirements");
 				return validateRaidRequirements(
 					location,
 					config.tobRequireSpell(),
@@ -470,6 +542,7 @@ public class AccessDeniedPlugin extends Plugin
 				);
 			
 			case "toa":
+				log.debug("Validating Tombs of Amascut requirements");
 				return validateRaidRequirements(
 					location,
 					config.toaRequireSpell(),
@@ -477,6 +550,7 @@ public class AccessDeniedPlugin extends Plugin
 				);
 			
 			case "cox":
+				log.debug("Validating Chambers of Xeric requirements");
 				return validateRaidRequirements(
 					location,
 					config.coxRequireSpell(),
@@ -488,8 +562,7 @@ public class AccessDeniedPlugin extends Plugin
 				return new ValidationResult(
 					true,
 					java.util.Collections.emptySet(),
-					"No validation logic implemented",
-					new HashMap<>()
+					"No validation logic implemented"
 				);
 		}
 	}
@@ -520,10 +593,11 @@ public class AccessDeniedPlugin extends Plugin
 
 		// Check thrall requirements if enabled
 		boolean thrallsValid = true;
+		boolean hasBook = false;
 		if (requireThralls)
 		{
 			boolean hasThralRunes = playerStateValidator.hasResurrectGreaterGhostRunes();
-			boolean hasBook = playerStateValidator.hasBookOfTheDead();
+			hasBook = playerStateValidator.hasBookOfTheDead();
 
 			log.debug("Thralls - Has runes: {}, Has Book: {}", hasThralRunes, hasBook);
 
@@ -576,8 +650,7 @@ public class AccessDeniedPlugin extends Plugin
 			return new ValidationResult(
 				true,
 				java.util.Collections.emptySet(),
-				"All requirements met",
-				new HashMap<>()
+				"All requirements met"
 			);
 		}
 		else
@@ -589,8 +662,7 @@ public class AccessDeniedPlugin extends Plugin
 			return new ValidationResult(
 				false,
 				java.util.Collections.singleton(failureMessage),
-				failureMessage,
-				new HashMap<>()
+				failureMessage
 			);
 		}
 	}

@@ -15,6 +15,8 @@ A RuneLite plugin that validates player requirements before entering boss areas,
   - Death Charge spell
   - Arceuus spellbook validation
   - Rune pouch and inventory checking
+  - <img width="418" height="585" alt="image" src="https://github.com/user-attachments/assets/f61d8501-0c85-4235-9e0c-e5f4e1386e23" />
+
 
 - Smart validation:
   - Checks inventory and rune pouch contents

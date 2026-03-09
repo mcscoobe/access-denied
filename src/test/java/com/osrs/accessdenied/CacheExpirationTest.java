@@ -1,73 +1,215 @@
 package com.osrs.accessdenied;
 
+import net.runelite.api.Client;
+import net.runelite.client.callback.ClientThread;
+import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.when;
 
 /**
- * Tests for cache expiration behavior.
- * Note: These are conceptual tests. Full integration tests would require
- * mocking the RuneLite Client API.
+ * Tests for validation cache expiration behavior.
  */
 public class CacheExpirationTest
 {
-	@Test
-	public void testCacheExpirationConstant()
+	@Mock
+	private Client client;
+
+	@Mock
+	private AccessDeniedConfig config;
+
+	@Mock
+	private PlayerStateValidator validator;
+
+	@Mock
+	private ClientThread clientThread;
+
+	private AccessDeniedPlugin plugin;
+
+	@Before
+	public void setUp() throws Exception
 	{
-		// Verify the cache expiration is set to a reasonable value (30 seconds)
-		// This is a sanity check to ensure the constant hasn't been accidentally changed
-		// The actual constant is private, but we can document the expected behavior
-		
-		// Expected: 30 seconds = 30,000 milliseconds
-		long expectedExpiration = 30_000L;
-		
-		// This test documents that cache should expire after 30 seconds
-		assertTrue("Cache expiration should be positive", expectedExpiration > 0);
-		assertTrue("Cache expiration should be reasonable (not too short)", expectedExpiration >= 10_000);
-		assertTrue("Cache expiration should be reasonable (not too long)", expectedExpiration <= 300_000);
+		MockitoAnnotations.openMocks(this);
+		plugin = new AccessDeniedPlugin();
+
+		// Inject mocked dependencies
+		setField(plugin, "client", client);
+		setField(plugin, "config", config);
+		setField(plugin, "playerStateValidator", validator);
+		setField(plugin, "clientThread", clientThread);
 	}
 
 	@Test
-	public void testTimestampLogic()
+	public void testCacheExpirationAfter30Seconds() throws Exception
 	{
-		// Test that timestamp comparison logic works correctly
-		long now = System.currentTimeMillis();
-		long thirtySecondsAgo = now - 30_000L;
-		long oneMinuteAgo = now - 60_000L;
-		
-		// Cache from 30 seconds ago should be at the expiration boundary
-		long age30 = now - thirtySecondsAgo;
-		assertEquals("30 seconds should equal expiration time", 30_000L, age30);
-		
-		// Cache from 1 minute ago should be expired
-		long age60 = now - oneMinuteAgo;
-		assertTrue("1 minute old cache should be expired", age60 > 30_000L);
+		// Set current location
+		setField(plugin, "currentLocation", BossLocations.NEX);
+
+		// Create a validation result and add to cache
+		ValidationResult result = new ValidationResult(true, Collections.emptySet(), "Valid");
+		Map<String, ValidationResult> validationCache = new HashMap<>();
+		validationCache.put("nex", result);
+		setField(plugin, "validationCache", validationCache);
+
+		// Set timestamp to 31 seconds ago (expired)
+		Map<String, Long> validationCacheTimestamp = new HashMap<>();
+		long expiredTime = System.currentTimeMillis() - 31_000;
+		validationCacheTimestamp.put("nex", expiredTime);
+		setField(plugin, "validationCacheTimestamp", validationCacheTimestamp);
+
+		// Call getCachedValidationResult
+		Method getCachedValidationResult = plugin.getClass().getDeclaredMethod("getCachedValidationResult");
+		getCachedValidationResult.setAccessible(true);
+		ValidationResult cachedResult = (ValidationResult) getCachedValidationResult.invoke(plugin);
+
+		// Should return null because cache expired
+		assertNull(cachedResult);
+
+		// Verify cache was cleared
+		Map<String, ValidationResult> cacheAfter = getField(plugin, "validationCache");
+		assertFalse(cacheAfter.containsKey("nex"));
+
+		Map<String, Long> timestampAfter = getField(plugin, "validationCacheTimestamp");
+		assertFalse(timestampAfter.containsKey("nex"));
 	}
 
 	@Test
-	public void testCacheAgeCalculation()
+	public void testCacheValidWithin30Seconds() throws Exception
 	{
-		// Test the age calculation logic
-		long timestamp = 1000000L;
-		long currentTime = 1035000L;
-		long expectedAge = 35000L; // 35 seconds
-		
-		long actualAge = currentTime - timestamp;
-		assertEquals("Age calculation should be correct", expectedAge, actualAge);
-		
-		// Verify expiration logic
-		boolean shouldExpire = actualAge > 30_000L;
-		assertTrue("35 second old cache should be expired", shouldExpire);
+		// Set current location
+		setField(plugin, "currentLocation", BossLocations.NEX);
+
+		// Create a validation result and add to cache
+		ValidationResult result = new ValidationResult(true, Collections.emptySet(), "Valid");
+		Map<String, ValidationResult> validationCache = new HashMap<>();
+		validationCache.put("nex", result);
+		setField(plugin, "validationCache", validationCache);
+
+		// Set timestamp to 10 seconds ago (still valid)
+		Map<String, Long> validationCacheTimestamp = new HashMap<>();
+		long recentTime = System.currentTimeMillis() - 10_000;
+		validationCacheTimestamp.put("nex", recentTime);
+		setField(plugin, "validationCacheTimestamp", validationCacheTimestamp);
+
+		// Call getCachedValidationResult
+		Method getCachedValidationResult = plugin.getClass().getDeclaredMethod("getCachedValidationResult");
+		getCachedValidationResult.setAccessible(true);
+		ValidationResult cachedResult = (ValidationResult) getCachedValidationResult.invoke(plugin);
+
+		// Should return the cached result
+		assertNotNull(cachedResult);
+		assertTrue(cachedResult.isValid());
+		assertEquals("Valid", cachedResult.getFeedbackMessage());
 	}
 
 	@Test
-	public void testFreshCacheNotExpired()
+	public void testCacheReturnsNullWhenNoCache() throws Exception
 	{
-		// Test that fresh cache is not expired
-		long timestamp = System.currentTimeMillis() - 5000L; // 5 seconds ago
-		long currentTime = System.currentTimeMillis();
-		long age = currentTime - timestamp;
-		
-		boolean shouldExpire = age > 30_000L;
-		assertFalse("5 second old cache should not be expired", shouldExpire);
+		// Set current location
+		setField(plugin, "currentLocation", BossLocations.NEX);
+
+		// Empty cache
+		setField(plugin, "validationCache", new HashMap<>());
+		setField(plugin, "validationCacheTimestamp", new HashMap<>());
+
+		// Call getCachedValidationResult
+		Method getCachedValidationResult = plugin.getClass().getDeclaredMethod("getCachedValidationResult");
+		getCachedValidationResult.setAccessible(true);
+		ValidationResult cachedResult = (ValidationResult) getCachedValidationResult.invoke(plugin);
+
+		// Should return null
+		assertNull(cachedResult);
+	}
+
+	@Test
+	public void testCacheReturnsNullWhenNoTimestamp() throws Exception
+	{
+		// Set current location
+		setField(plugin, "currentLocation", BossLocations.NEX);
+
+		// Create a validation result but no timestamp
+		ValidationResult result = new ValidationResult(true, Collections.emptySet(), "Valid");
+		Map<String, ValidationResult> validationCache = new HashMap<>();
+		validationCache.put("nex", result);
+		setField(plugin, "validationCache", validationCache);
+		setField(plugin, "validationCacheTimestamp", new HashMap<>());
+
+		// Call getCachedValidationResult
+		Method getCachedValidationResult = plugin.getClass().getDeclaredMethod("getCachedValidationResult");
+		getCachedValidationResult.setAccessible(true);
+		ValidationResult cachedResult = (ValidationResult) getCachedValidationResult.invoke(plugin);
+
+		// Should return null and clear cache
+		assertNull(cachedResult);
+
+		Map<String, ValidationResult> cacheAfter = getField(plugin, "validationCache");
+		assertFalse(cacheAfter.containsKey("nex"));
+	}
+
+	@Test
+	public void testCacheReturnsNullWhenNoCurrentLocation() throws Exception
+	{
+		// No current location
+		setField(plugin, "currentLocation", null);
+
+		// Call getCachedValidationResult
+		Method getCachedValidationResult = plugin.getClass().getDeclaredMethod("getCachedValidationResult");
+		getCachedValidationResult.setAccessible(true);
+		ValidationResult cachedResult = (ValidationResult) getCachedValidationResult.invoke(plugin);
+
+		// Should return null
+		assertNull(cachedResult);
+	}
+
+	@Test
+	public void testCacheExpirationExactly30Seconds() throws Exception
+	{
+		// Set current location
+		setField(plugin, "currentLocation", BossLocations.NEX);
+
+		// Create a validation result and add to cache
+		ValidationResult result = new ValidationResult(true, Collections.emptySet(), "Valid");
+		Map<String, ValidationResult> validationCache = new HashMap<>();
+		validationCache.put("nex", result);
+		setField(plugin, "validationCache", validationCache);
+
+		// Set timestamp to exactly 30 seconds ago (boundary case)
+		Map<String, Long> validationCacheTimestamp = new HashMap<>();
+		long boundaryTime = System.currentTimeMillis() - 30_000;
+		validationCacheTimestamp.put("nex", boundaryTime);
+		setField(plugin, "validationCacheTimestamp", validationCacheTimestamp);
+
+		// Call getCachedValidationResult
+		Method getCachedValidationResult = plugin.getClass().getDeclaredMethod("getCachedValidationResult");
+		getCachedValidationResult.setAccessible(true);
+		ValidationResult cachedResult = (ValidationResult) getCachedValidationResult.invoke(plugin);
+
+		// At exactly 30 seconds, should still be valid (not expired)
+		assertNotNull(cachedResult);
+	}
+
+	// Helper methods for reflection
+	private void setField(Object target, String fieldName, Object value) throws Exception
+	{
+		Field field = target.getClass().getDeclaredField(fieldName);
+		field.setAccessible(true);
+		field.set(target, value);
+	}
+
+	@SuppressWarnings("unchecked")
+	private <T> T getField(Object target, String fieldName) throws Exception
+	{
+		Field field = target.getClass().getDeclaredField(fieldName);
+		field.setAccessible(true);
+		return (T) field.get(target);
 	}
 }

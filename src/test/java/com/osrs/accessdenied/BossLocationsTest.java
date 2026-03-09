@@ -1,21 +1,34 @@
 package com.osrs.accessdenied;
 
 import org.junit.Test;
+
 import static org.junit.Assert.*;
 
+/**
+ * Unit tests for BossLocations registry class.
+ */
 public class BossLocationsTest
 {
 	@Test
-	public void testNexLocationDefinition()
+	public void testAllLocationsContainsExpectedLocations()
+	{
+		assertEquals(4, BossLocations.ALL_LOCATIONS.size());
+		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.NEX));
+		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.THEATRE_OF_BLOOD));
+		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.TOMBS_OF_AMASCUT));
+		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.CHAMBERS_OF_XERIC));
+	}
+
+	@Test
+	public void testNexLocationProperties()
 	{
 		assertEquals("nex", BossLocations.NEX.getId());
 		assertEquals("Nex", BossLocations.NEX.getDisplayName());
 		assertTrue(BossLocations.NEX.isInRegion(11601));
-		assertFalse(BossLocations.NEX.isInRegion(99999));
 	}
 
 	@Test
-	public void testTheatreOfBloodLocationDefinition()
+	public void testTheatreOfBloodLocationProperties()
 	{
 		assertEquals("tob", BossLocations.THEATRE_OF_BLOOD.getId());
 		assertEquals("Theatre of Blood", BossLocations.THEATRE_OF_BLOOD.getDisplayName());
@@ -23,7 +36,7 @@ public class BossLocationsTest
 	}
 
 	@Test
-	public void testTombsOfAmascutLocationDefinition()
+	public void testTombsOfAmascutLocationProperties()
 	{
 		assertEquals("toa", BossLocations.TOMBS_OF_AMASCUT.getId());
 		assertEquals("Tombs of Amascut", BossLocations.TOMBS_OF_AMASCUT.getDisplayName());
@@ -31,52 +44,101 @@ public class BossLocationsTest
 	}
 
 	@Test
-	public void testChambersOfXericLocationDefinition()
+	public void testChambersOfXericLocationProperties()
 	{
 		assertEquals("cox", BossLocations.CHAMBERS_OF_XERIC.getId());
 		assertEquals("Chambers of Xeric", BossLocations.CHAMBERS_OF_XERIC.getDisplayName());
 		assertTrue(BossLocations.CHAMBERS_OF_XERIC.isInRegion(13393));
 		assertTrue(BossLocations.CHAMBERS_OF_XERIC.isInRegion(13137));
-		assertFalse(BossLocations.CHAMBERS_OF_XERIC.isInRegion(99999));
+	}
+
+	@Test
+	public void testLocationObjectsMapping()
+	{
+		assertEquals(4, BossLocations.LOCATION_OBJECTS.size());
+		assertEquals(Integer.valueOf(42967), BossLocations.LOCATION_OBJECTS.get("nex"));
+		assertEquals(Integer.valueOf(32653), BossLocations.LOCATION_OBJECTS.get("tob"));
+		assertEquals(Integer.valueOf(46089), BossLocations.LOCATION_OBJECTS.get("toa"));
+		assertEquals(Integer.valueOf(29789), BossLocations.LOCATION_OBJECTS.get("cox"));
 	}
 
 	@Test
 	public void testFindByRegion()
 	{
-		assertEquals(BossLocations.NEX, BossLocations.findByRegion(11601));
-		assertEquals(BossLocations.THEATRE_OF_BLOOD, BossLocations.findByRegion(14642));
-		assertEquals(BossLocations.TOMBS_OF_AMASCUT, BossLocations.findByRegion(13454));
-		assertEquals(BossLocations.CHAMBERS_OF_XERIC, BossLocations.findByRegion(13393));
-		assertEquals(BossLocations.CHAMBERS_OF_XERIC, BossLocations.findByRegion(13137));
-		assertNull(BossLocations.findByRegion(99999));
+		BossLocation nex = BossLocations.findByRegion(11601);
+		assertNotNull(nex);
+		assertEquals("nex", nex.getId());
+
+		BossLocation tob = BossLocations.findByRegion(14642);
+		assertNotNull(tob);
+		assertEquals("tob", tob.getId());
+
+		BossLocation toa = BossLocations.findByRegion(13454);
+		assertNotNull(toa);
+		assertEquals("toa", toa.getId());
+
+		BossLocation cox = BossLocations.findByRegion(13393);
+		assertNotNull(cox);
+		assertEquals("cox", cox.getId());
+	}
+
+	@Test
+	public void testFindByRegionNotFound()
+	{
+		BossLocation result = BossLocations.findByRegion(99999);
+		assertNull(result);
 	}
 
 	@Test
 	public void testFindByAnyRegion()
 	{
-		int[] nexRegions = {11601};
-		assertEquals(BossLocations.NEX, BossLocations.findByAnyRegion(nexRegions));
+		int[] nexRegions = {11600, 11601, 11602};
+		BossLocation nex = BossLocations.findByAnyRegion(nexRegions);
+		assertNotNull(nex);
+		assertEquals("nex", nex.getId());
 
-		int[] multipleRegions = {11344, 11345, 11601};
-		assertEquals(BossLocations.NEX, BossLocations.findByAnyRegion(multipleRegions));
+		int[] coxRegions = {13136, 13137, 13138};
+		BossLocation cox = BossLocations.findByAnyRegion(coxRegions);
+		assertNotNull(cox);
+		assertEquals("cox", cox.getId());
+	}
 
-		int[] coxRegions = {13393, 13137};
-		assertEquals(BossLocations.CHAMBERS_OF_XERIC, BossLocations.findByAnyRegion(coxRegions));
+	@Test
+	public void testFindByAnyRegionNotFound()
+	{
+		int[] unknownRegions = {99998, 99999};
+		BossLocation result = BossLocations.findByAnyRegion(unknownRegions);
+		assertNull(result);
+	}
 
-		int[] noMatchRegions = {99999, 88888};
-		assertNull(BossLocations.findByAnyRegion(noMatchRegions));
-
-		assertNull(BossLocations.findByAnyRegion(null));
+	@Test
+	public void testFindByAnyRegionWithNull()
+	{
+		BossLocation result = BossLocations.findByAnyRegion(null);
+		assertNull(result);
 	}
 
 	@Test
 	public void testGetObjectForLocation()
 	{
-		assertEquals(Integer.valueOf(42967), BossLocations.getObjectForLocation(BossLocations.NEX));
-		assertEquals(Integer.valueOf(32653), BossLocations.getObjectForLocation(BossLocations.THEATRE_OF_BLOOD));
-		assertEquals(Integer.valueOf(46089), BossLocations.getObjectForLocation(BossLocations.TOMBS_OF_AMASCUT));
-		assertEquals(Integer.valueOf(29789), BossLocations.getObjectForLocation(BossLocations.CHAMBERS_OF_XERIC));
-		assertNull(BossLocations.getObjectForLocation(null));
+		Integer nexObject = BossLocations.getObjectForLocation(BossLocations.NEX);
+		assertEquals(Integer.valueOf(42967), nexObject);
+
+		Integer tobObject = BossLocations.getObjectForLocation(BossLocations.THEATRE_OF_BLOOD);
+		assertEquals(Integer.valueOf(32653), tobObject);
+
+		Integer toaObject = BossLocations.getObjectForLocation(BossLocations.TOMBS_OF_AMASCUT);
+		assertEquals(Integer.valueOf(46089), toaObject);
+
+		Integer coxObject = BossLocations.getObjectForLocation(BossLocations.CHAMBERS_OF_XERIC);
+		assertEquals(Integer.valueOf(29789), coxObject);
+	}
+
+	@Test
+	public void testGetObjectForLocationWithNull()
+	{
+		Integer result = BossLocations.getObjectForLocation(null);
+		assertNull(result);
 	}
 
 	@Test
@@ -87,21 +149,24 @@ public class BossLocationsTest
 		assertFalse(BossLocations.isValidatedObject(BossLocations.NEX, 99999));
 
 		assertTrue(BossLocations.isValidatedObject(BossLocations.THEATRE_OF_BLOOD, 32653));
-		assertFalse(BossLocations.isValidatedObject(BossLocations.THEATRE_OF_BLOOD, 99999));
+		assertFalse(BossLocations.isValidatedObject(BossLocations.THEATRE_OF_BLOOD, 32654));
 
 		assertTrue(BossLocations.isValidatedObject(BossLocations.TOMBS_OF_AMASCUT, 46089));
 		assertTrue(BossLocations.isValidatedObject(BossLocations.CHAMBERS_OF_XERIC, 29789));
+	}
 
+	@Test
+	public void testIsValidatedObjectWithNull()
+	{
 		assertFalse(BossLocations.isValidatedObject(null, 42967));
 	}
 
 	@Test
-	public void testAllLocationsContainsAllDefinedLocations()
+	public void testObjectIdConstants()
 	{
-		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.NEX));
-		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.THEATRE_OF_BLOOD));
-		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.TOMBS_OF_AMASCUT));
-		assertTrue(BossLocations.ALL_LOCATIONS.contains(BossLocations.CHAMBERS_OF_XERIC));
-		assertEquals(4, BossLocations.ALL_LOCATIONS.size());
+		assertEquals(42967, BossLocations.NEX_OBJECT);
+		assertEquals(32653, BossLocations.TOB_OBJECT);
+		assertEquals(46089, BossLocations.TOA_OBJECT);
+		assertEquals(29789, BossLocations.COX_OBJECT);
 	}
 }

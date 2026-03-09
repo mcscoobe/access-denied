@@ -50,6 +50,24 @@ public class PlayerStateValidator
 	}
 
 	/**
+	 * Check if the player is on the Ancient spellbook.
+	 * Ancient spellbook is required to cast Ice Barrage and Blood Barrage.
+	 * 
+	 * @return true if the player is on the Ancient spellbook, false otherwise
+	 */
+	public boolean isOnAncientSpellbook()
+	{
+		// Varbits.SPELLBOOK tracks the current spellbook
+		// 0 = Standard, 1 = Ancient, 2 = Lunar, 3 = Arceuus
+		final int ANCIENT_SPELLBOOK = 1;
+
+		int currentSpellbook = client.getVarbitValue(Varbits.SPELLBOOK);
+		log.debug("Current spellbook varbit value: {} (1 = Ancient)", currentSpellbook);
+
+		return currentSpellbook == ANCIENT_SPELLBOOK;
+	}
+
+	/**
 	 * Check if the player has the required runes to cast Resurrect Greater Ghost.
 	 * Resurrect Greater Ghost requires: 4 Soul runes, 2 Blood runes, 1 Cosmic rune
 	 * Aether runes count as both Soul and Cosmic runes.
@@ -89,6 +107,146 @@ public class PlayerStateValidator
 		log.debug("  Required: Death x1, Blood x1, Soul x1");
 
 		return hasRequiredRunesWithAether(requiredRunes, "Death Charge");
+	}
+
+	/**
+	 * Check if the player has the required runes to cast Ice Barrage.
+	 * Ice Barrage requires: 6 Water runes, 2 Death runes, 4 Blood runes
+	 * Note: Ice Barrage does not use Soul or Cosmic runes, so Aether runes don't help.
+	 * 
+	 * Special case: Kodai wand provides infinite water runes.
+	 * 
+	 * @return true if the player has sufficient runes, false otherwise
+	 */
+	public boolean hasIceBarrageRunes()
+	{
+		// Required runes for Ice Barrage
+		Map<Integer, Integer> requiredRunes = new HashMap<>();
+		requiredRunes.put(555, 6);  // Water rune
+		requiredRunes.put(560, 2);  // Death rune
+		requiredRunes.put(565, 4);  // Blood rune
+
+		log.debug("Checking Ice Barrage runes:");
+		log.debug("  Required: Water x6, Death x2, Blood x4");
+
+		// Check if player has Kodai wand (provides infinite water runes)
+		if (hasKodaiWand())
+		{
+			log.debug("  Kodai wand found - water runes not required");
+			// Remove water rune requirement
+			requiredRunes.remove(555);
+		}
+
+		return hasRequiredRunesWithAether(requiredRunes, "Ice Barrage");
+	}
+
+	/**
+	 * Check if the player has the required runes to cast Blood Barrage.
+	 * Blood Barrage requires: 4 Blood runes, 1 Soul rune, 1 Death rune
+	 * Aether runes can substitute for Soul runes.
+	 * 
+	 * @return true if the player has sufficient runes, false otherwise
+	 */
+	public boolean hasBloodBarrageRunes()
+	{
+		// Required runes for Blood Barrage
+		Map<Integer, Integer> requiredRunes = new HashMap<>();
+		requiredRunes.put(565, 4);  // Blood rune
+		requiredRunes.put(566, 1);  // Soul rune
+		requiredRunes.put(560, 1);  // Death rune
+
+		log.debug("Checking Blood Barrage runes:");
+		log.debug("  Required: Blood x4, Soul x1, Death x1");
+
+		return hasRequiredRunesWithAether(requiredRunes, "Blood Barrage");
+	}
+
+	/**
+	 * Check if the player has the required runes to cast both Ice Barrage and Blood Barrage.
+	 * This is a combined check that ensures the player has enough runes for both spells.
+	 * 
+	 * Combined requirements:
+	 * - Water: 6 (from Ice Barrage) - not required if Kodai wand is equipped/in inventory
+	 * - Death: 3 (2 from Ice Barrage + 1 from Blood Barrage)
+	 * - Blood: 8 (4 from Ice Barrage + 4 from Blood Barrage)
+	 * - Soul: 1 (from Blood Barrage, Aether can substitute)
+	 * 
+	 * @return true if the player has sufficient runes for both spells, false otherwise
+	 */
+	public boolean hasBarrageRunes()
+	{
+		// Combined runes for both Ice Barrage and Blood Barrage
+		Map<Integer, Integer> requiredRunes = new HashMap<>();
+		requiredRunes.put(555, 6);  // Water rune (Ice Barrage)
+		requiredRunes.put(560, 3);  // Death rune (2 Ice + 1 Blood)
+		requiredRunes.put(565, 8);  // Blood rune (4 Ice + 4 Blood)
+		requiredRunes.put(566, 1);  // Soul rune (Blood Barrage, Aether can substitute)
+
+		log.debug("Checking combined Barrage runes:");
+		log.debug("  Required: Water x6, Death x3, Blood x8, Soul x1");
+
+		// Check if player has Kodai wand (provides infinite water runes)
+		if (hasKodaiWand())
+		{
+			log.debug("  Kodai wand found - water runes not required");
+			// Remove water rune requirement
+			requiredRunes.remove(555);
+		}
+
+		return hasRequiredRunesWithAether(requiredRunes, "Ice Barrage + Blood Barrage");
+	}
+
+	/**
+	 * Check if the player has a Kodai wand equipped or in their inventory.
+	 * Kodai wand provides infinite water runes for spells.
+	 * 
+	 * Item ID: 21006 = Kodai wand
+	 * 
+	 * @return true if the player has a Kodai wand, false otherwise
+	 */
+	private boolean hasKodaiWand()
+	{
+		final int KODAI_WAND_ID = 21006;
+		final int EQUIPMENT_CONTAINER_ID = 94;
+
+		// Check inventory
+		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+		if (inventory != null)
+		{
+			Item[] items = inventory.getItems();
+			if (items != null)
+			{
+				for (Item item : items)
+				{
+					if (item != null && item.getId() == KODAI_WAND_ID)
+					{
+						log.debug("Kodai wand found in inventory");
+						return true;
+					}
+				}
+			}
+		}
+
+		// Check equipment (container ID 94)
+		ItemContainer equipment = client.getItemContainer(EQUIPMENT_CONTAINER_ID);
+		if (equipment != null)
+		{
+			Item[] items = equipment.getItems();
+			if (items != null)
+			{
+				for (Item item : items)
+				{
+					if (item != null && item.getId() == KODAI_WAND_ID)
+					{
+						log.debug("Kodai wand found in equipment");
+						return true;
+					}
+				}
+			}
+		}
+
+		log.debug("Kodai wand NOT found");
+		return false;
 	}
 
 	/**

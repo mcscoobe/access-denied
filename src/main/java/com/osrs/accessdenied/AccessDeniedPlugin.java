@@ -136,6 +136,7 @@ public class AccessDeniedPlugin extends Plugin
 	 * This handles:
 	 * - Book of the Dead changes (for thralls)
 	 * - Runes added/removed directly to inventory (not in rune pouch)
+	 * - Equipment changes (for Kodai wand and other items that affect spell requirements)
 	 * 
 	 * Note: Rune pouch changes are handled by onVarbitChanged for better efficiency.
 	 */
@@ -154,15 +155,18 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		// Only care about inventory changes
+		// Care about inventory and equipment changes
+		// Equipment container ID is 94
+		final int EQUIPMENT_CONTAINER_ID = 94;
 		int containerId = event.getContainerId();
-		if (containerId != InventoryID.INV)
+		if (containerId != InventoryID.INV && containerId != EQUIPMENT_CONTAINER_ID)
 		{
 			return;
 		}
 
-		log.debug("Inventory changed while in {} region, revalidating", 
-			currentLocation.getDisplayName());
+		String containerName = containerId == InventoryID.INV ? "Inventory" : "Equipment";
+		log.debug("{} changed while in {} region, revalidating", 
+			containerName, currentLocation.getDisplayName());
 		
 		// Clear the menu modified state so the message can be shown again if validation state changed
 		menuModifiedState.remove(currentLocation.getId());
@@ -257,6 +261,11 @@ public class AccessDeniedPlugin extends Plugin
 					|| "coxRequireSpell".equals(configKey) 
 					|| "coxRequireDeathCharge".equals(configKey);
 				break;
+			case "inferno":
+				shouldRevalidate = "infernoEnabled".equals(configKey)
+					|| "infernoRequireIceBarrage".equals(configKey)
+					|| "infernoRequireBloodBarrage".equals(configKey);
+				break;
 		}
 
 		if (shouldRevalidate)
@@ -303,6 +312,11 @@ public class AccessDeniedPlugin extends Plugin
 		{
 			locationName = "Chambers of Xeric";
 			hasRequirements = config.coxRequireSpell() || config.coxRequireDeathCharge();
+		}
+		else if ("infernoEnabled".equals(configKey) && config.infernoEnabled())
+		{
+			locationName = "Inferno";
+			hasRequirements = config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage();
 		}
 
 		// Show warning if location is enabled but no requirements are set
@@ -635,6 +649,10 @@ public class AccessDeniedPlugin extends Plugin
 					config.coxRequireDeathCharge()
 				);
 			
+			case "inferno":
+				log.debug("Validating Inferno requirements");
+				return validateInfernoRequirements();
+			
 			default:
 				log.warn("No validation logic implemented for location: {}", location.getId());
 				return new ValidationResult(
@@ -746,6 +764,95 @@ public class AccessDeniedPlugin extends Plugin
 	}
 
 	/**
+	 * Validate Inferno-specific requirements.
+	 * Can require either Ice Barrage or Blood Barrage (or both).
+	 * - Ice Barrage requires: 6 Water runes, 2 Death runes, 4 Blood runes, Ancient spellbook
+	 * - Blood Barrage requires: 4 Blood runes, 1 Soul rune, 1 Death rune, Ancient spellbook
+	 * Aether runes can substitute for Soul runes.
+	 * 
+	 * @return ValidationResult indicating whether requirements are met
+	 */
+	private ValidationResult validateInfernoRequirements()
+	{
+		log.debug("Checking Inferno requirements - Ice Barrage: {}, Blood Barrage: {}", 
+			config.infernoRequireIceBarrage(), config.infernoRequireBloodBarrage());
+
+		// Check spellbook (required for both)
+		boolean hasSpellbook = playerStateValidator.isOnAncientSpellbook();
+		log.debug("On Ancient spellbook: {}", hasSpellbook);
+
+		// Track what's missing
+		java.util.List<String> missing = new java.util.ArrayList<>();
+
+		// Check Ice Barrage requirements if enabled
+		boolean iceBarrageValid = true;
+		if (config.infernoRequireIceBarrage())
+		{
+			boolean hasIceBarrageRunes = playerStateValidator.hasIceBarrageRunes();
+			log.debug("Ice Barrage - Has runes: {}", hasIceBarrageRunes);
+
+			if (!hasIceBarrageRunes)
+			{
+				missing.add("runes for Ice Barrage");
+				iceBarrageValid = false;
+			}
+		}
+
+		// Check Blood Barrage requirements if enabled
+		boolean bloodBarrageValid = true;
+		if (config.infernoRequireBloodBarrage())
+		{
+			boolean hasBloodBarrageRunes = playerStateValidator.hasBloodBarrageRunes();
+			log.debug("Blood Barrage - Has runes: {}", hasBloodBarrageRunes);
+
+			if (!hasBloodBarrageRunes)
+			{
+				missing.add("runes for Blood Barrage");
+				bloodBarrageValid = false;
+			}
+		}
+
+		// Check spellbook
+		if (!hasSpellbook)
+		{
+			missing.add("Ancient spellbook");
+		}
+
+		// Determine if validation passed
+		boolean allValid = hasSpellbook;
+		if (config.infernoRequireIceBarrage())
+		{
+			allValid = allValid && iceBarrageValid;
+		}
+		if (config.infernoRequireBloodBarrage())
+		{
+			allValid = allValid && bloodBarrageValid;
+		}
+
+		if (allValid)
+		{
+			log.debug("Validation PASSED for Inferno: Has all requirements");
+			return new ValidationResult(
+				true,
+				java.util.Collections.emptySet(),
+				"All requirements met"
+			);
+		}
+		else
+		{
+			// Build specific failure message
+			String failureMessage = "Missing: " + String.join(", ", missing);
+
+			log.debug("Validation FAILED for Inferno: {}", failureMessage);
+			return new ValidationResult(
+				false,
+				java.util.Collections.singleton(failureMessage),
+				failureMessage
+			);
+		}
+	}
+
+	/**
 	 * Check if validation is required for a specific location based on config.
 	 * Validation is required when:
 	 * 1. The location's master toggle is enabled, AND
@@ -774,6 +881,8 @@ public class AccessDeniedPlugin extends Plugin
 				return config.toaEnabled() && (config.toaRequireSpell() || config.toaRequireDeathCharge());
 			case "cox":
 				return config.coxEnabled() && (config.coxRequireSpell() || config.coxRequireDeathCharge());
+			case "inferno":
+				return config.infernoEnabled() && (config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage());
 			default:
 				return false;
 		}

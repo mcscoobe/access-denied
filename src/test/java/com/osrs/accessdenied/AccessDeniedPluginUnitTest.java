@@ -62,6 +62,12 @@ public class AccessDeniedPluginUnitTest
 		setField(plugin, "config", config);
 		setField(plugin, "playerStateValidator", validator);
 		setField(plugin, "clientThread", clientThread);
+		
+		// Mock overlay manager and overlay
+		net.runelite.client.ui.overlay.OverlayManager overlayManager = mock(net.runelite.client.ui.overlay.OverlayManager.class);
+		AccessDeniedOverlay overlay = mock(AccessDeniedOverlay.class);
+		setField(plugin, "overlayManager", overlayManager);
+		setField(plugin, "overlay", overlay);
 
 		// Setup default mocks
 		when(client.getLocalPlayer()).thenReturn(player);

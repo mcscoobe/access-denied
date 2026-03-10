@@ -43,6 +43,12 @@ public class AccessDeniedPlugin extends Plugin
 	@Inject
 	private ClientThread clientThread;
 
+	@Inject
+	private net.runelite.client.ui.overlay.OverlayManager overlayManager;
+
+	@Inject
+	private AccessDeniedOverlay overlay;
+
 	// Current location tracking
 	private BossLocation currentLocation;
 	private int[] currentRegions;
@@ -65,6 +71,8 @@ public class AccessDeniedPlugin extends Plugin
 		validationCache.clear();
 		validationCacheTimestamp.clear();
 		menuModifiedState.clear();
+		
+		// Note: Overlay is registered dynamically when entering CoX region
 	}
 
 	@Override
@@ -77,6 +85,9 @@ public class AccessDeniedPlugin extends Plugin
 		validationCache.clear();
 		validationCacheTimestamp.clear();
 		menuModifiedState.clear();
+		
+		// Unregister overlay if it was registered
+		overlayManager.remove(overlay);
 	}
 
 	/**
@@ -120,6 +131,23 @@ public class AccessDeniedPlugin extends Plugin
 		log.debug("Region changed - Old location: {}, New location: {}", 
 			currentLocation != null ? currentLocation.getDisplayName() : "none",
 			newLocation != null ? newLocation.getDisplayName() : "none");
+
+		// Manage overlay registration based on location
+		boolean wasInCox = currentLocation != null && "cox".equals(currentLocation.getId());
+		boolean nowInCox = newLocation != null && "cox".equals(newLocation.getId());
+		
+		if (nowInCox && !wasInCox)
+		{
+			// Entering CoX - register overlay
+			log.debug("Entering CoX region, registering overlay");
+			overlayManager.add(overlay);
+		}
+		else if (!nowInCox && wasInCox)
+		{
+			// Leaving CoX - unregister overlay
+			log.debug("Leaving CoX region, unregistering overlay");
+			overlayManager.remove(overlay);
+		}
 
 		currentLocation = newLocation;
 
@@ -445,6 +473,14 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
+		// For CoX, don't modify menu entries (use overlay highlight instead)
+		// This allows players to still enter if raid leader starts
+		if ("cox".equals(currentLocation.getId()))
+		{
+			displayWarningMessage(validationResult);
+			return;
+		}
+
 		// Validation failed - deprioritize the entrance interaction
 		MenuEntry[] menuEntries = client.getMenuEntries();
 		if (menuEntries == null || menuEntries.length == 0)
@@ -456,20 +492,59 @@ public class AccessDeniedPlugin extends Plugin
 		reorderMenuToWalkHere(menuEntries);
 
 		// Display feedback message once per validation state
-		if (!Boolean.TRUE.equals(menuModifiedState.get(currentLocation.getId())))
+		displayFeedbackMessage(validationResult);
+	}
+
+	/**
+	 * Display a warning message for CoX when validation fails.
+	 * Uses red text to indicate it's a warning, not a blocking error.
+	 */
+	private void displayWarningMessage(ValidationResult validationResult)
+	{
+		if (Boolean.TRUE.equals(menuModifiedState.get(currentLocation.getId())))
 		{
-			String message = validationResult.getFeedbackMessage();
-			if (message != null && !message.isEmpty())
-			{
-				client.addChatMessage(
-					ChatMessageType.GAMEMESSAGE,
-					"",
-					message,
-					null
-				);
-			}
-			menuModifiedState.put(currentLocation.getId(), true);
+			return;
 		}
+
+		String message = validationResult.getFeedbackMessage();
+		if (message == null || message.isEmpty())
+		{
+			return;
+		}
+
+		client.addChatMessage(
+			ChatMessageType.GAMEMESSAGE,
+			"",
+			"<col=ff0000>Warning: " + message + "</col>",
+			null
+		);
+		menuModifiedState.put(currentLocation.getId(), true);
+	}
+
+	/**
+	 * Display a feedback message when validation fails.
+	 * Shows once per validation state to avoid spam.
+	 */
+	private void displayFeedbackMessage(ValidationResult validationResult)
+	{
+		if (Boolean.TRUE.equals(menuModifiedState.get(currentLocation.getId())))
+		{
+			return;
+		}
+
+		String message = validationResult.getFeedbackMessage();
+		if (message == null || message.isEmpty())
+		{
+			return;
+		}
+
+		client.addChatMessage(
+			ChatMessageType.GAMEMESSAGE,
+			"",
+			message,
+			null
+		);
+		menuModifiedState.put(currentLocation.getId(), true);
 	}
 
 	/**
@@ -928,6 +1003,32 @@ public class AccessDeniedPlugin extends Plugin
 		}
 		
 		return set1.equals(set2);
+	}
+
+	/**
+	 * Get the current boss location.
+	 * Used by the overlay to determine if highlighting is needed.
+	 * 
+	 * @return The current boss location, or null if not in a boss location
+	 */
+	public BossLocation getCurrentLocation()
+	{
+		return currentLocation;
+	}
+
+	/**
+	 * Get the cached validation result for the current location (public accessor for overlay).
+	 * Used by the overlay to determine if the entrance should be highlighted.
+	 * 
+	 * @return The cached validation result, or null if no cache exists
+	 */
+	public ValidationResult getPublicCachedValidationResult()
+	{
+		if (currentLocation == null)
+		{
+			return null;
+		}
+		return validationCache.get(currentLocation.getId());
 	}
 
 	@Provides

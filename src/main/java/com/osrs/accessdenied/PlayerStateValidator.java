@@ -69,7 +69,7 @@ public class PlayerStateValidator
 
 	/**
 	 * Check if the player has the required runes to cast Thralls.
-	 * Thralls requires: 4 Soul runes, 2 Blood runes, 1 Cosmic rune
+	 * Thralls requires: 10 Fire runes, 2 Blood runes, 1 Cosmic rune
 	 * Aether runes count as both Soul and Cosmic runes.
 	 * 
 	 * @return true if the player has sufficient runes, false otherwise
@@ -78,12 +78,12 @@ public class PlayerStateValidator
 	{
 		// Required runes for Thralls
 		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(566, 4);  // Soul rune
+		requiredRunes.put(554, 10);  // Soul rune
 		requiredRunes.put(565, 2);  // Blood rune
 		requiredRunes.put(564, 1);  // Cosmic rune
 
 		log.debug("Checking Thralls runes:");
-		log.debug("  Required: Soul x4, Blood x2, Cosmic x1");
+		log.debug("  Required: Fire x10, Blood x2, Cosmic x1");
 
 		return hasRequiredRunesWithAether(requiredRunes, "Thralls");
 	}
@@ -142,7 +142,7 @@ public class PlayerStateValidator
 
 	/**
 	 * Check if the player has the required runes to cast Blood Barrage.
-	 * Blood Barrage requires: 4 Blood runes, 1 Soul rune, 1 Death rune
+	 * Blood Barrage requires: 4 Blood runes, 1 Soul rune, 4 Death rune
 	 * Aether runes can substitute for Soul runes.
 	 * 
 	 * @return true if the player has sufficient runes, false otherwise
@@ -153,7 +153,7 @@ public class PlayerStateValidator
 		Map<Integer, Integer> requiredRunes = new HashMap<>();
 		requiredRunes.put(565, 4);  // Blood rune
 		requiredRunes.put(566, 1);  // Soul rune
-		requiredRunes.put(560, 1);  // Death rune
+		requiredRunes.put(560, 4);  // Death rune
 
 		log.debug("Checking Blood Barrage runes:");
 		log.debug("  Required: Blood x4, Soul x1, Death x1");

@@ -300,32 +300,43 @@ public class PlayerStateValidator
 	}
 
 	/**
-	 * Check if the player has a Book of the Dead in their inventory.
+	 * Check if the player has a Book of the Dead in their inventory or equipped.
 	 * Book of the Dead is required to cast Thralls.
-	 * 
+	 *
 	 * @return true if the player has a Book of the Dead, false otherwise
 	 */
 	public boolean hasBookOfTheDead()
 	{
 		final int BOOK_OF_THE_DEAD_ID = 25818;
+		final int EQUIPMENT_CONTAINER_ID = 94;
 
 		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
-		if (inventory == null)
+		if (inventory != null)
 		{
-			log.debug("Checking Book of the Dead: Inventory is null");
-			return false;
-		}
-
-		for (Item item : inventory.getItems())
-		{
-			if (item != null && item.getId() == BOOK_OF_THE_DEAD_ID)
+			for (Item item : inventory.getItems())
 			{
-				log.debug("Book of the Dead found in inventory");
-				return true;
+				if (item != null && item.getId() == BOOK_OF_THE_DEAD_ID)
+				{
+					log.debug("Book of the Dead found in inventory");
+					return true;
+				}
 			}
 		}
 
-		log.debug("Book of the Dead NOT found in inventory");
+		ItemContainer equipment = client.getItemContainer(EQUIPMENT_CONTAINER_ID);
+		if (equipment != null)
+		{
+			for (Item item : equipment.getItems())
+			{
+				if (item != null && item.getId() == BOOK_OF_THE_DEAD_ID)
+				{
+					log.debug("Book of the Dead found in equipment");
+					return true;
+				}
+			}
+		}
+
+		log.debug("Book of the Dead NOT found");
 		return false;
 	}
 

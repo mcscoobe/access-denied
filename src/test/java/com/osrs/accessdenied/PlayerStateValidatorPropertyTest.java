@@ -457,6 +457,60 @@ class PlayerStateValidatorPropertyTest
 			.isTrue();
 	}
 
+	/**
+	 * Book of the Dead equipped (not in inventory) should still pass validation.
+	 */
+	@Property
+	void bookOfTheDeadDetectionWorksWhenEquipped(
+		@ForAll @IntRange(max = 12) int equipmentSlot
+	)
+	{
+		final int EQUIPMENT_CONTAINER_ID = 94;
+
+		Client client = mock(Client.class);
+		ItemContainer inventory = mock(ItemContainer.class);
+		ItemContainer equipment = mock(ItemContainer.class);
+		EnumComposition runepouchEnum = mock(EnumComposition.class);
+
+		// Empty inventory
+		Item[] inventoryItems = new Item[28];
+		for (int i = 0; i < 28; i++)
+		{
+			inventoryItems[i] = createItem(-1, 0);
+		}
+
+		// Book in equipment at a random slot
+		Item[] equipmentItems = new Item[13];
+		for (int i = 0; i < 13; i++)
+		{
+			equipmentItems[i] = (i == equipmentSlot)
+				? createItem(BOOK_OF_THE_DEAD_ID, 1)
+				: createItem(-1, 0);
+		}
+
+		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
+		when(client.getItemContainer(EQUIPMENT_CONTAINER_ID)).thenReturn(equipment);
+		when(client.getEnum(EnumID.RUNEPOUCH_RUNE)).thenReturn(runepouchEnum);
+		when(client.getVarbitValue(VarbitID.SPELLBOOK)).thenReturn(3);
+		when(inventory.getItems()).thenReturn(inventoryItems);
+		when(equipment.getItems()).thenReturn(equipmentItems);
+
+		when(client.getVarbitValue(VarbitID.RUNE_POUCH_TYPE_1)).thenReturn(0);
+		when(client.getVarbitValue(VarbitID.RUNE_POUCH_TYPE_2)).thenReturn(0);
+		when(client.getVarbitValue(VarbitID.RUNE_POUCH_TYPE_3)).thenReturn(0);
+		when(client.getVarbitValue(VarbitID.RUNE_POUCH_TYPE_4)).thenReturn(0);
+		when(client.getVarbitValue(VarbitID.RUNE_POUCH_QUANTITY_1)).thenReturn(0);
+		when(client.getVarbitValue(VarbitID.RUNE_POUCH_QUANTITY_2)).thenReturn(0);
+		when(client.getVarbitValue(VarbitID.RUNE_POUCH_QUANTITY_3)).thenReturn(0);
+		when(client.getVarbitValue(VarbitID.RUNE_POUCH_QUANTITY_4)).thenReturn(0);
+
+		PlayerStateValidator validator = new PlayerStateValidator(client);
+
+		assertThat(validator.hasBookOfTheDead())
+			.as("Should find Book of the Dead in equipment slot %d", equipmentSlot)
+			.isTrue();
+	}
+
 	// Helper methods
 
 	private Item createItem(int id, int quantity)

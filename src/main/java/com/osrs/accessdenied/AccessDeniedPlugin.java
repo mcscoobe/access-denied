@@ -8,6 +8,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
@@ -23,12 +24,15 @@ import net.runelite.client.plugins.PluginDescriptor;
 )
 public class AccessDeniedPlugin extends Plugin
 {
+	@SuppressWarnings("unused")
 	@Inject
 	private Client client;
 
+	@SuppressWarnings("unused")
 	@Inject
 	private AccessDeniedConfig config;
 
+	@SuppressWarnings("unused")
 	@Inject
 	private PlayerStateValidator playerStateValidator;
 
@@ -36,6 +40,7 @@ public class AccessDeniedPlugin extends Plugin
 	private int[] currentRegions;
 	private ValidationResult lastResult;
 	private boolean lastResultWasValid = true;
+	private boolean coxRaidActive = false;
 
 	@Override
 	protected void startUp()
@@ -44,6 +49,7 @@ public class AccessDeniedPlugin extends Plugin
 		currentRegions = null;
 		lastResult = null;
 		lastResultWasValid = true;
+		coxRaidActive = false;
 	}
 
 	@Override
@@ -53,6 +59,7 @@ public class AccessDeniedPlugin extends Plugin
 		currentRegions = null;
 		lastResult = null;
 		lastResultWasValid = true;
+		coxRaidActive = false;
 	}
 
 	@Subscribe
@@ -68,7 +75,8 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		int[] newRegions = client.getMapRegions();
+		int[] newRegions = client.getTopLevelWorldView().getMapRegions();
+
 		if (regionsEqual(currentRegions, newRegions))
 		{
 			return;
@@ -82,13 +90,15 @@ public class AccessDeniedPlugin extends Plugin
 			currentLocation = newLocation;
 			lastResult = null;
 			lastResultWasValid = true;
+			coxRaidActive = false;
 		}
 	}
 
+	@SuppressWarnings("unused")
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		if (currentLocation == null || !isValidationRequired(currentLocation))
+		if (coxRaidActive || !isValidationRequired(currentLocation))
 		{
 			lastResult = null;
 			lastResultWasValid = true;
@@ -110,6 +120,24 @@ public class AccessDeniedPlugin extends Plugin
 		lastResult = result;
 	}
 
+	@SuppressWarnings("unused")
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		if (currentLocation == null || !currentLocation.getId().equals("cox"))
+		{
+			return;
+		}
+
+		if (event.getMessage().contains("The raid has begun!"))
+		{
+			log.debug("CoX raid started — suppressing menu swaps and validation");
+			coxRaidActive = true;
+			lastResult = null;
+			lastResultWasValid = true;
+		}
+	}
+
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
@@ -128,7 +156,7 @@ public class AccessDeniedPlugin extends Plugin
 	@Subscribe
 	public void onMenuEntryAdded(MenuEntryAdded event)
 	{
-		if (currentLocation == null || lastResult == null || lastResult.isValid())
+		if (coxRaidActive || currentLocation == null || lastResult == null || lastResult.isValid())
 		{
 			return;
 		}
@@ -147,7 +175,7 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		reorderMenuToWalkHere(client.getMenuEntries());
+		reorderMenuToWalkHere(client.getMenu().getMenuEntries());
 	}
 
 	private void reorderMenuToWalkHere(MenuEntry[] menuEntries)
@@ -185,11 +213,26 @@ public class AccessDeniedPlugin extends Plugin
 		}
 		reordered[menuEntries.length - 1] = walkHereEntry;
 
-		client.setMenuEntries(reordered);
+		client.getMenu().setMenuEntries(reordered);
 	}
 
 	private void validateConfiguration(String configKey)
 	{
+		// Spellbook conflict check — fires on any CoX require* key change
+		if (configKey.startsWith("cox"))
+		{
+			boolean coxArceuusSpells = config.coxRequireSpell() || config.coxRequireDeathCharge();
+			boolean coxLunarSpells = config.coxRequireHumidify() || config.coxRequireVengeance();
+			if (coxArceuusSpells && coxLunarSpells)
+			{
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+					"<col=ff0000>Warning: Chambers of Xeric has conflicting spellbook requirements. " +
+					"Arceuus spells (Thralls/Death Charge) and Lunar spells (Humidify/Vengeance) cannot both be required.</col>",
+					null);
+			}
+		}
+
+		// No-requirements warning — fires only when a master Enabled toggle is turned on
 		if (!configKey.endsWith("Enabled"))
 		{
 			return;
@@ -216,7 +259,8 @@ public class AccessDeniedPlugin extends Plugin
 		else if ("coxEnabled".equals(configKey) && config.coxEnabled())
 		{
 			locationName = "Chambers of Xeric";
-			hasRequirements = config.coxRequireSpell() || config.coxRequireDeathCharge();
+			hasRequirements = config.coxRequireSpell() || config.coxRequireDeathCharge()
+				|| config.coxRequireHumidify() || config.coxRequireVengeance();
 		}
 		else if ("infernoEnabled".equals(configKey) && config.infernoEnabled())
 		{
@@ -240,13 +284,13 @@ public class AccessDeniedPlugin extends Plugin
 		switch (location.getId())
 		{
 			case "nex":
-				return validateRaidRequirements(location, config.nexRequireSpell(), config.nexRequireDeathCharge());
+				return validateRaidRequirements(config.nexRequireSpell(), config.nexRequireDeathCharge());
 			case "tob":
-				return validateRaidRequirements(location, config.tobRequireSpell(), config.tobRequireDeathCharge());
+				return validateRaidRequirements(config.tobRequireSpell(), config.tobRequireDeathCharge());
 			case "toa":
-				return validateRaidRequirements(location, config.toaRequireSpell(), config.toaRequireDeathCharge());
+				return validateRaidRequirements(config.toaRequireSpell(), config.toaRequireDeathCharge());
 			case "cox":
-				return validateRaidRequirements(location, config.coxRequireSpell(), config.coxRequireDeathCharge());
+				return validateCoxRequirements();
 			case "inferno":
 				return validateInfernoRequirements();
 			default:
@@ -254,7 +298,7 @@ public class AccessDeniedPlugin extends Plugin
 		}
 	}
 
-	private ValidationResult validateRaidRequirements(BossLocation location, boolean requireThralls, boolean requireDeathCharge)
+	private ValidationResult validateRaidRequirements(boolean requireThralls, boolean requireDeathCharge)
 	{
 		boolean hasSpellbook = playerStateValidator.isOnArceuusSpellbook();
 		java.util.List<String> missing = new java.util.ArrayList<>();
@@ -285,6 +329,48 @@ public class AccessDeniedPlugin extends Plugin
 			&& (!requireDeathCharge || deathChargeValid);
 
 		if (allValid)
+		{
+			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
+		}
+
+		String msg = "Missing: " + String.join(", ", missing);
+		return new ValidationResult(false, java.util.Collections.singleton(msg), msg);
+	}
+
+	private ValidationResult validateCoxRequirements()
+	{
+		java.util.List<String> missing = new java.util.ArrayList<>();
+
+		boolean requireArceuus = config.coxRequireSpell() || config.coxRequireDeathCharge();
+		if (requireArceuus)
+		{
+			if (config.coxRequireSpell())
+			{
+				if (!playerStateValidator.hasResurrectGreaterGhostRunes()) { missing.add("runes for Thralls"); }
+				if (!playerStateValidator.hasBookOfTheDead()) { missing.add("Book of the Dead"); }
+			}
+			if (config.coxRequireDeathCharge())
+			{
+				if (!playerStateValidator.hasDeathChargeRunes()) { missing.add("runes for Death Charge"); }
+			}
+			if (!playerStateValidator.isOnArceuusSpellbook()) { missing.add("Arceuus spellbook"); }
+		}
+
+		boolean requireLunar = config.coxRequireHumidify() || config.coxRequireVengeance();
+		if (requireLunar)
+		{
+			if (config.coxRequireHumidify())
+			{
+				if (!playerStateValidator.hasHumidifyRunes()) { missing.add("runes for Humidify"); }
+			}
+			if (config.coxRequireVengeance())
+			{
+				if (!playerStateValidator.hasVengeanceRunes()) { missing.add("runes for Vengeance"); }
+			}
+			if (!playerStateValidator.isOnLunarSpellbook()) { missing.add("Lunar spellbook"); }
+		}
+
+		if (missing.isEmpty())
 		{
 			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
 		}
@@ -344,7 +430,8 @@ public class AccessDeniedPlugin extends Plugin
 			case "toa":
 				return config.toaEnabled() && (config.toaRequireSpell() || config.toaRequireDeathCharge());
 			case "cox":
-				return config.coxEnabled() && (config.coxRequireSpell() || config.coxRequireDeathCharge());
+				return config.coxEnabled() && (config.coxRequireSpell() || config.coxRequireDeathCharge()
+					|| config.coxRequireHumidify() || config.coxRequireVengeance());
 			case "inferno":
 				return config.infernoEnabled() && (config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage());
 			default:
@@ -365,6 +452,7 @@ public class AccessDeniedPlugin extends Plugin
 		return set1.equals(set2);
 	}
 
+	@SuppressWarnings("unused")
 	@Provides
 	AccessDeniedConfig provideConfig(ConfigManager configManager)
 	{

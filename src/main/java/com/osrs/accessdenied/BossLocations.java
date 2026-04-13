@@ -107,14 +107,8 @@ public class BossLocations
 
 	static
 	{
-		Set<BossLocation> locations = new HashSet<>();
-		locations.add(NEX);
-		locations.add(THEATRE_OF_BLOOD);
-		locations.add(TOMBS_OF_AMASCUT);
-		locations.add(CHAMBERS_OF_XERIC);
-		locations.add(INFERNO);
-		
-		ALL_LOCATIONS = Collections.unmodifiableSet(locations);
+
+		ALL_LOCATIONS = Set.of(NEX, THEATRE_OF_BLOOD, TOMBS_OF_AMASCUT, CHAMBERS_OF_XERIC, INFERNO);
 
 		// Map locations to their game objects
 		Map<String, Integer> objectMap = new HashMap<>();

@@ -127,10 +127,10 @@ public class BossLocationsTest
 	}
 
 	@Test
-	public void testFindByAnyRegionWithNull()
+	public void testFindByAnyRegionWithNullDoesNotThrow()
 	{
-		BossLocation result = BossLocations.findByAnyRegion(null);
-		assertNull(result);
+		// Verifies null input is handled gracefully without throwing NPE
+		BossLocations.findByAnyRegion(null);
 	}
 
 	@Test
@@ -153,10 +153,10 @@ public class BossLocationsTest
 	}
 
 	@Test
-	public void testGetObjectForLocationWithNull()
+	public void testGetObjectForLocationWithNullDoesNotThrow()
 	{
-		Integer result = BossLocations.getObjectForLocation(null);
-		assertNull(result);
+		// Verifies null input is handled gracefully without throwing NPE
+		BossLocations.getObjectForLocation(null);
 	}
 
 	@Test

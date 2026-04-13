@@ -7,7 +7,6 @@ import net.runelite.api.EnumComposition;
 import net.runelite.api.EnumID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
-import net.runelite.api.Varbits;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarbitID;
 
@@ -22,13 +21,16 @@ class PlayerStateValidatorPropertyTest
 {
 
 	// Rune IDs
-	private static final int SOUL_RUNE_ID = 566;
-	private static final int BLOOD_RUNE_ID = 565;
-	private static final int COSMIC_RUNE_ID = 564;
+	private static final int FIRE_RUNE_ID = 554;
+	private static final int WATER_RUNE_ID = 555;
+	private static final int EARTH_RUNE_ID = 557;
 	private static final int DEATH_RUNE_ID = 560;
+	private static final int COSMIC_RUNE_ID = 564;
+	private static final int BLOOD_RUNE_ID = 565;
+	private static final int SOUL_RUNE_ID = 566;
+	private static final int ASTRAL_RUNE_ID = 9075;
 	private static final int AETHER_RUNE_ID = 30843;
 	private static final int BOOK_OF_THE_DEAD_ID = 25818;
-	private static final int RUNE_POUCH_ID = 12791;
 
 	/**
 	 * Helper to create a validator with mocked client and inventory.
@@ -41,7 +43,7 @@ class PlayerStateValidatorPropertyTest
 
 		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
 		when(client.getEnum(EnumID.RUNEPOUCH_RUNE)).thenReturn(runepouchEnum);
-		when(client.getVarbitValue(Varbits.SPELLBOOK)).thenReturn(3); // Arceuus spellbook
+		when(client.getVarbitValue(VarbitID.SPELLBOOK)).thenReturn(3); // Arceuus spellbook
 		when(inventory.getItems()).thenReturn(inventoryItems);
 
 		// Setup empty rune pouch by default
@@ -67,99 +69,70 @@ class PlayerStateValidatorPropertyTest
 		return new PlayerStateValidator(client);
 	}
 
+	// -----------------------------------------------------------------------
+	// Resurrect Greater Ghost (Thralls) — Fire x10, Blood x5, Cosmic x1
+	// -----------------------------------------------------------------------
+
 	/**
-	 * Property: Having exactly the required runes should always pass validation.
+	 * Property: Having at least the required runes should always pass Thralls validation.
 	 */
 	@Property
 	void exactRunesForResurrectGreaterGhostShouldPass(
-		@ForAll @IntRange(min = 4, max = 100) int soulRunes,
-		@ForAll @IntRange(min = 2, max = 100) int bloodRunes,
+		@ForAll @IntRange(min = 10, max = 100) int fireRunes,
+		@ForAll @IntRange(min = 5, max = 100) int bloodRunes,
 		@ForAll @IntRange(min = 1, max = 100) int cosmicRunes
 	)
 	{
-		// Setup inventory with exact or more runes
 		Item[] items = new Item[]{
-			createItem(SOUL_RUNE_ID, soulRunes),
+			createItem(FIRE_RUNE_ID, fireRunes),
 			createItem(BLOOD_RUNE_ID, bloodRunes),
 			createItem(COSMIC_RUNE_ID, cosmicRunes),
 			createItem(BOOK_OF_THE_DEAD_ID, 1)
 		};
 		PlayerStateValidator validator = createValidator(items);
 
-		// Should pass validation
 		boolean result = validator.hasResurrectGreaterGhostRunes();
 		assertThat(result)
-			.as("Should pass with Soul:%d, Blood:%d, Cosmic:%d", soulRunes, bloodRunes, cosmicRunes)
+			.as("Should pass with Fire:%d, Blood:%d, Cosmic:%d", fireRunes, bloodRunes, cosmicRunes)
 			.isTrue();
 	}
 
 	/**
-	 * Property: Missing even one required rune should fail validation.
+	 * Property: Being short on any rune type should fail Thralls validation.
 	 */
 	@Property
 	void missingOneRuneTypeShouldFail(
-		@ForAll @IntRange(min = 0, max = 3) int soulRunes,
-		@ForAll @IntRange(min = 0, max = 1) int bloodRunes,
-		@ForAll @IntRange(min = 0, max = 0) int cosmicRunes
+		@ForAll @IntRange(max = 9) int fireRunes,
+		@ForAll @IntRange(max = 4) int bloodRunes,
+		@ForAll @IntRange(max = 0) int cosmicRunes
 	)
 	{
-		// At least one rune type is below requirement
 		Item[] items = new Item[]{
-			createItem(SOUL_RUNE_ID, soulRunes),
+			createItem(FIRE_RUNE_ID, fireRunes),
 			createItem(BLOOD_RUNE_ID, bloodRunes),
 			createItem(COSMIC_RUNE_ID, cosmicRunes),
 			createItem(BOOK_OF_THE_DEAD_ID, 1)
 		};
 		PlayerStateValidator validator = createValidator(items);
 
-		// Should fail validation
 		boolean result = validator.hasResurrectGreaterGhostRunes();
 		assertThat(result)
-			.as("Should fail with Soul:%d, Blood:%d, Cosmic:%d", soulRunes, bloodRunes, cosmicRunes)
+			.as("Should fail with Fire:%d, Blood:%d, Cosmic:%d", fireRunes, bloodRunes, cosmicRunes)
 			.isFalse();
 	}
 
 	/**
-	 * Property: Aether runes can substitute for Soul runes.
+	 * Property: Aether runes can substitute for Cosmic runes in Thralls.
 	 */
 	@Property
-	void aetherRunesCanSubstituteForSoulRunes(
-		@ForAll @IntRange(min = 0, max = 3) int soulRunes,
+	void aetherRunesCanSubstituteForCosmicInThralls(
+		@ForAll @IntRange(max = 0) int cosmicRunes,
 		@ForAll @IntRange(min = 1, max = 10) int aetherRunes
 	)
 	{
-		// Calculate if we have enough total
-		int totalSoulEquivalent = soulRunes + aetherRunes;
-		boolean shouldPass = totalSoulEquivalent >= 4;
-
 		Item[] items = new Item[]{
-			createItem(SOUL_RUNE_ID, soulRunes),
-			createItem(AETHER_RUNE_ID, aetherRunes),
-			createItem(BLOOD_RUNE_ID, 2),
-			createItem(COSMIC_RUNE_ID, 1),
-			createItem(BOOK_OF_THE_DEAD_ID, 1)
-		};
-		PlayerStateValidator validator = createValidator(items);
-
-		boolean result = validator.hasResurrectGreaterGhostRunes();
-		assertThat(result)
-			.as("With Soul:%d + Aether:%d (total:%d), expected:%s", soulRunes, aetherRunes, totalSoulEquivalent, shouldPass)
-			.isEqualTo(shouldPass);
-	}
-
-	/**
-	 * Property: Aether runes can substitute for Cosmic runes.
-	 */
-	@Property
-	void aetherRunesCanSubstituteForCosmicRunes(
-		@ForAll @IntRange(min = 0, max = 0) int cosmicRunes,
-		@ForAll @IntRange(min = 1, max = 10) int aetherRunes
-	)
-	{
-		// With 0 cosmic but aether available, should pass
-		Item[] items = new Item[]{
-			createItem(SOUL_RUNE_ID, 4),
-			createItem(BLOOD_RUNE_ID, 2),
+			createItem(FIRE_RUNE_ID, 10),
+			createItem(BLOOD_RUNE_ID, 5),
 			createItem(COSMIC_RUNE_ID, cosmicRunes),
 			createItem(AETHER_RUNE_ID, aetherRunes),
 			createItem(BOOK_OF_THE_DEAD_ID, 1)
@@ -173,31 +146,35 @@ class PlayerStateValidatorPropertyTest
 	}
 
 	/**
-	 * Property: Aether runes can substitute for both Soul AND Cosmic simultaneously.
+	 * Property: Lava runes can substitute for Fire runes in Thralls.
 	 */
 	@Property
-	void aetherRunesCanSubstituteForBothSoulAndCosmic(
-		@ForAll @IntRange(min = 0, max = 3) int soulRunes,
-		@ForAll @IntRange(min = 0, max = 0) int cosmicRunes,
-		@ForAll @IntRange(min = 5, max = 10) int aetherRunes
+	void lavaRunesCanSubstituteForFireInThralls(
+		@ForAll @IntRange(max = 9) int fireRunes,
+		@ForAll @IntRange(min = 1, max = 20) int lavaRunes
 	)
 	{
-		// Need 4 soul + 1 cosmic = 5 total
-		// With enough aether, should always pass
+		int totalFireEquivalent = fireRunes + lavaRunes;
+		boolean shouldPass = totalFireEquivalent >= 10;
+
 		Item[] items = new Item[]{
-			createItem(SOUL_RUNE_ID, soulRunes),
-			createItem(BLOOD_RUNE_ID, 2),
-			createItem(COSMIC_RUNE_ID, cosmicRunes),
-			createItem(AETHER_RUNE_ID, aetherRunes),
+			createItem(FIRE_RUNE_ID, fireRunes),
+			createItem(CombinationRune.LAVA.getItemId(), lavaRunes),
+			createItem(BLOOD_RUNE_ID, 5),
+			createItem(COSMIC_RUNE_ID, 1),
 			createItem(BOOK_OF_THE_DEAD_ID, 1)
 		};
 		PlayerStateValidator validator = createValidator(items);
 
 		boolean result = validator.hasResurrectGreaterGhostRunes();
 		assertThat(result)
-			.as("Should pass with Soul:%d, Cosmic:%d, Aether:%d", soulRunes, cosmicRunes, aetherRunes)
-			.isTrue();
+			.as("With Fire:%d + Lava:%d (total:%d), expected:%s", fireRunes, lavaRunes, totalFireEquivalent, shouldPass)
+			.isEqualTo(shouldPass);
 	}
+
+	// -----------------------------------------------------------------------
+	// Death Charge — Death x1, Blood x1, Soul x1
+	// -----------------------------------------------------------------------
 
 	/**
 	 * Property: Death Charge requires exactly 1 of each rune type.
@@ -232,7 +209,6 @@ class PlayerStateValidatorPropertyTest
 		@ForAll @IntRange(min = 1, max = 100) int aetherRunes
 	)
 	{
-		// Aether can substitute for Soul
 		Item[] items = new Item[]{
 			createItem(DEATH_RUNE_ID, deathRunes),
 			createItem(BLOOD_RUNE_ID, bloodRunes),
@@ -246,6 +222,182 @@ class PlayerStateValidatorPropertyTest
 			.isTrue();
 	}
 
+	// -----------------------------------------------------------------------
+	// Humidify — Astral x1, Fire x1, Water x1
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Property: Having at least the required runes should always pass Humidify validation.
+	 */
+	@Property
+	void exactRunesForHumidifyShouldPass(
+		@ForAll @IntRange(min = 1, max = 100) int astralRunes,
+		@ForAll @IntRange(min = 1, max = 100) int fireRunes,
+		@ForAll @IntRange(min = 1, max = 100) int waterRunes
+	)
+	{
+		Item[] items = new Item[]{
+			createItem(ASTRAL_RUNE_ID, astralRunes),
+			createItem(FIRE_RUNE_ID, fireRunes),
+			createItem(WATER_RUNE_ID, waterRunes)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		boolean result = validator.hasHumidifyRunes();
+		assertThat(result)
+			.as("Should pass with Astral:%d, Fire:%d, Water:%d", astralRunes, fireRunes, waterRunes)
+			.isTrue();
+	}
+
+	/**
+	 * Property: Missing any rune should fail Humidify validation.
+	 */
+	@Property
+	void missingRunesForHumidifyShouldFail()
+	{
+		PlayerStateValidator validator = createValidator(new Item[]{
+			createItem(ASTRAL_RUNE_ID, 0),
+			createItem(FIRE_RUNE_ID, 1),
+			createItem(WATER_RUNE_ID, 1)
+		});
+		assertThat(validator.hasHumidifyRunes()).isFalse();
+
+		validator = createValidator(new Item[]{
+			createItem(ASTRAL_RUNE_ID, 1),
+			createItem(FIRE_RUNE_ID, 0),
+			createItem(WATER_RUNE_ID, 1)
+		});
+		assertThat(validator.hasHumidifyRunes()).isFalse();
+
+		validator = createValidator(new Item[]{
+			createItem(ASTRAL_RUNE_ID, 1),
+			createItem(FIRE_RUNE_ID, 1),
+			createItem(WATER_RUNE_ID, 0)
+		});
+		assertThat(validator.hasHumidifyRunes()).isFalse();
+	}
+
+	/**
+	 * Property: Steam runes can substitute for both Fire and Water in Humidify.
+	 */
+	@Property
+	void steamRunesCanSubstituteForFireAndWaterInHumidify(
+		@ForAll @IntRange(min = 1, max = 10) int steamRunes
+	)
+	{
+		Item[] items = new Item[]{
+			createItem(ASTRAL_RUNE_ID, 1),
+			createItem(CombinationRune.STEAM.getItemId(), steamRunes)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		boolean result = validator.hasHumidifyRunes();
+		assertThat(result)
+			.as("Steam rune should cover Fire and Water requirements for Humidify")
+			.isTrue();
+	}
+
+	/**
+	 * Property: Mist runes can substitute for Water in Humidify.
+	 */
+	@Property
+	void mistRunesCanSubstituteForWaterInHumidify(
+		@ForAll @IntRange(min = 1, max = 10) int mistRunes
+	)
+	{
+		Item[] items = new Item[]{
+			createItem(ASTRAL_RUNE_ID, 1),
+			createItem(FIRE_RUNE_ID, 1),
+			createItem(CombinationRune.MIST.getItemId(), mistRunes)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		boolean result = validator.hasHumidifyRunes();
+		assertThat(result)
+			.as("Mist rune should substitute for Water in Humidify")
+			.isTrue();
+	}
+
+	// -----------------------------------------------------------------------
+	// Vengeance — Earth x10, Astral x4, Death x2
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Property: Having at least the required runes should always pass Vengeance validation.
+	 */
+	@Property
+	void exactRunesForVengeanceShouldPass(
+		@ForAll @IntRange(min = 10, max = 100) int earthRunes,
+		@ForAll @IntRange(min = 4, max = 100) int astralRunes,
+		@ForAll @IntRange(min = 2, max = 100) int deathRunes
+	)
+	{
+		Item[] items = new Item[]{
+			createItem(EARTH_RUNE_ID, earthRunes),
+			createItem(ASTRAL_RUNE_ID, astralRunes),
+			createItem(DEATH_RUNE_ID, deathRunes)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		boolean result = validator.hasVengeanceRunes();
+		assertThat(result)
+			.as("Should pass with Earth:%d, Astral:%d, Death:%d", earthRunes, astralRunes, deathRunes)
+			.isTrue();
+	}
+
+	/**
+	 * Property: Being short on any rune type should fail Vengeance validation.
+	 */
+	@Property
+	void missingRunesForVengeanceShouldFail(
+		@ForAll @IntRange(max = 9) int earthRunes,
+		@ForAll @IntRange(max = 3) int astralRunes,
+		@ForAll @IntRange(max = 1) int deathRunes
+	)
+	{
+		Item[] items = new Item[]{
+			createItem(EARTH_RUNE_ID, earthRunes),
+			createItem(ASTRAL_RUNE_ID, astralRunes),
+			createItem(DEATH_RUNE_ID, deathRunes)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		boolean result = validator.hasVengeanceRunes();
+		assertThat(result)
+			.as("Should fail with Earth:%d, Astral:%d, Death:%d", earthRunes, astralRunes, deathRunes)
+			.isFalse();
+	}
+
+	/**
+	 * Property: Mud runes can substitute for Earth in Vengeance.
+	 */
+	@Property
+	void mudRunesCanSubstituteForEarthInVengeance(
+		@ForAll @IntRange(max = 9) int earthRunes,
+		@ForAll @IntRange(min = 1, max = 20) int mudRunes
+	)
+	{
+		int totalEarthEquivalent = earthRunes + mudRunes;
+		boolean shouldPass = totalEarthEquivalent >= 10;
+
+		Item[] items = new Item[]{
+			createItem(EARTH_RUNE_ID, earthRunes),
+			createItem(CombinationRune.MUD.getItemId(), mudRunes),
+			createItem(ASTRAL_RUNE_ID, 4),
+			createItem(DEATH_RUNE_ID, 2)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		boolean result = validator.hasVengeanceRunes();
+		assertThat(result)
+			.as("With Earth:%d + Mud:%d (total:%d), expected:%s", earthRunes, mudRunes, totalEarthEquivalent, shouldPass)
+			.isEqualTo(shouldPass);
+	}
+
+	// -----------------------------------------------------------------------
+	// General invariants
+	// -----------------------------------------------------------------------
+
 	/**
 	 * Property: Empty inventory should always fail validation.
 	 */
@@ -254,11 +406,12 @@ class PlayerStateValidatorPropertyTest
 	{
 		PlayerStateValidator validator = createValidator(new Item[0]);
 
-		boolean thrallResult = validator.hasResurrectGreaterGhostRunes();
-		boolean deathChargeResult = validator.hasDeathChargeRunes();
-
-		assertThat(thrallResult).as("Empty inventory should fail thrall validation").isFalse();
-		assertThat(deathChargeResult).as("Empty inventory should fail death charge validation").isFalse();
+		assertThat(validator.hasResurrectGreaterGhostRunes()).as("Thralls").isFalse();
+		assertThat(validator.hasDeathChargeRunes()).as("Death Charge").isFalse();
+		assertThat(validator.hasHumidifyRunes()).as("Humidify").isFalse();
+		assertThat(validator.hasVengeanceRunes()).as("Vengeance").isFalse();
+		assertThat(validator.hasIceBarrageRunes()).as("Ice Barrage").isFalse();
+		assertThat(validator.hasBloodBarrageRunes()).as("Blood Barrage").isFalse();
 	}
 
 	/**
@@ -269,13 +422,11 @@ class PlayerStateValidatorPropertyTest
 	{
 		PlayerStateValidator validator = createValidatorWithNullInventory();
 
-		boolean thrallResult = validator.hasResurrectGreaterGhostRunes();
-		boolean deathChargeResult = validator.hasDeathChargeRunes();
-		boolean bookResult = validator.hasBookOfTheDead();
-
-		assertThat(thrallResult).as("Null inventory should fail thrall validation").isFalse();
-		assertThat(deathChargeResult).as("Null inventory should fail death charge validation").isFalse();
-		assertThat(bookResult).as("Null inventory should fail book check").isFalse();
+		assertThat(validator.hasResurrectGreaterGhostRunes()).as("Thralls").isFalse();
+		assertThat(validator.hasDeathChargeRunes()).as("Death Charge").isFalse();
+		assertThat(validator.hasHumidifyRunes()).as("Humidify").isFalse();
+		assertThat(validator.hasVengeanceRunes()).as("Vengeance").isFalse();
+		assertThat(validator.hasBookOfTheDead()).as("Book of the Dead").isFalse();
 	}
 
 	/**
@@ -283,7 +434,7 @@ class PlayerStateValidatorPropertyTest
 	 */
 	@Property
 	void bookOfTheDeadDetectionIsPositionIndependent(
-		@ForAll @IntRange(min = 0, max = 27) int bookPosition
+		@ForAll @IntRange(max = 27) int bookPosition
 	)
 	{
 		Item[] items = new Item[28];
@@ -310,7 +461,6 @@ class PlayerStateValidatorPropertyTest
 
 	private Item createItem(int id, int quantity)
 	{
-		Item item = new Item(id, quantity);
-		return item;
+		return new Item(id, quantity);
 	}
 }

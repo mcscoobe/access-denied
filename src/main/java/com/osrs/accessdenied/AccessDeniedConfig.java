@@ -180,6 +180,30 @@ public interface AccessDeniedConfig extends Config
 		return false;
 	}
 
+	@ConfigItem(
+		keyName = "coxRequireHumidify",
+		name = "Require Humidify",
+		description = "Require the ability to cast Humidify spell. Checks for: 1 Astral rune, 1 Fire rune, 1 Water rune, and Lunar spellbook.",
+		section = coxSection,
+		position = 3
+	)
+	default boolean coxRequireHumidify()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "coxRequireVengeance",
+		name = "Require Vengeance",
+		description = "Require the ability to cast Vengeance spell. Checks for: 10 Earth runes, 4 Astral runes, 2 Death runes, and Lunar spellbook.",
+		section = coxSection,
+		position = 4
+	)
+	default boolean coxRequireVengeance()
+	{
+		return false;
+	}
+
 	@ConfigSection(
 		name = "Inferno",
 		description = "Configuration for Inferno requirements",

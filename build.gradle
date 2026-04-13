@@ -13,7 +13,7 @@ repositories {
 	mavenCentral()
 }
 
-def runeLiteVersion = 'latest.release'
+def runeLiteVersion = '1.12.23'
 
 dependencies {
 	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
@@ -34,17 +34,17 @@ dependencies {
 group = 'com.osrs.accessdenied'
 version = '1.0-SNAPSHOT'
 
-task runTestClient(type: JavaExec) {
-	group = 'application'
-	description = 'Runs the AccessDeniedPluginTest main class'
-	dependsOn testClasses
-	classpath = sourceSets.test.runtimeClasspath
-	main = 'com.osrs.accessdenied.AccessDeniedPluginTest'
-	args = ['--developer-mode']
-	jvmArgs = [
-		'-ea',
-		'-Drunelite.pluginhub.skip=true'
-	]
+tasks.register('runTestClient', JavaExec) {
+    group = 'application'
+    description = 'Runs the AccessDeniedPluginTest main class'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    main = 'com.osrs.accessdenied.AccessDeniedPluginTest'
+    args = ['--developer-mode']
+    jvmArgs = [
+            '-ea',
+            '-Drunelite.pluginhub.skip=true'
+    ]
 }
 
 

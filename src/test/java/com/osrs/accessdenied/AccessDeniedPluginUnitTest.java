@@ -3,13 +3,15 @@ package com.osrs.accessdenied;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.Menu;
 import net.runelite.api.MenuAction;
-import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
+import net.runelite.api.WorldView;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -37,18 +39,32 @@ public class AccessDeniedPluginUnitTest
 	@Mock
 	private PlayerStateValidator validator;
 
+	@SuppressWarnings("unused")
 	@Mock
 	private ConfigManager configManager;
 
 	@Mock
 	private Player player;
 
+	@Mock
+	private Menu menu;
+
+	@Mock
+	private WorldView worldView;
+
 	private AccessDeniedPlugin plugin;
+	private AutoCloseable mocks;
+
+	@After
+	public void tearDown() throws Exception
+	{
+		mocks.close();
+	}
 
 	@Before
 	public void setUp() throws Exception
 	{
-		MockitoAnnotations.openMocks(this);
+		mocks = MockitoAnnotations.openMocks(this);
 		plugin = new AccessDeniedPlugin();
 
 		// Inject mocked dependencies
@@ -58,6 +74,8 @@ public class AccessDeniedPluginUnitTest
 
 		// Setup default mocks
 		when(client.getLocalPlayer()).thenReturn(player);
+		when(client.getTopLevelWorldView()).thenReturn(worldView);
+		when(client.getMenu()).thenReturn(menu);
 	}
 
 	@Test
@@ -69,7 +87,7 @@ public class AccessDeniedPluginUnitTest
 		assertNull(getField(plugin, "currentLocation"));
 		assertNull(getField(plugin, "currentRegions"));
 		assertNull(getField(plugin, "lastResult"));
-		assertTrue((boolean) getField(plugin, "lastResultWasValid"));
+		assertTrue(getField(plugin, "lastResultWasValid"));
 	}
 
 	@Test
@@ -81,7 +99,7 @@ public class AccessDeniedPluginUnitTest
 		assertNull(getField(plugin, "currentLocation"));
 		assertNull(getField(plugin, "currentRegions"));
 		assertNull(getField(plugin, "lastResult"));
-		assertTrue((boolean) getField(plugin, "lastResultWasValid"));
+		assertTrue(getField(plugin, "lastResultWasValid"));
 	}
 
 	@Test
@@ -93,7 +111,7 @@ public class AccessDeniedPluginUnitTest
 		plugin.onGameStateChanged(event);
 
 		// Should not interact with client
-		verify(client, never()).getMapRegions();
+		verify(client, never()).getTopLevelWorldView();
 	}
 
 	@Test
@@ -106,7 +124,7 @@ public class AccessDeniedPluginUnitTest
 		plugin.onGameStateChanged(event);
 
 		// Should not proceed without player
-		verify(client, never()).getMapRegions();
+		verify(client, never()).getTopLevelWorldView();
 	}
 
 	@Test
@@ -114,12 +132,12 @@ public class AccessDeniedPluginUnitTest
 	{
 		GameStateChanged event = mock(GameStateChanged.class);
 		when(event.getGameState()).thenReturn(GameState.LOGGED_IN);
-		when(client.getMapRegions()).thenReturn(new int[]{11601});
+		when(worldView.getMapRegions()).thenReturn(new int[]{11601});
 
 		plugin.onGameStateChanged(event);
 
 		// Should detect region change
-		verify(client, atLeastOnce()).getMapRegions();
+		verify(client, atLeastOnce()).getTopLevelWorldView();
 	}
 
 	@Test
@@ -264,6 +282,98 @@ public class AccessDeniedPluginUnitTest
 	}
 
 	@Test
+	public void testIsValidationRequiredWithCoxHumidify() throws Exception
+	{
+		when(config.coxEnabled()).thenReturn(true);
+		when(config.coxRequireSpell()).thenReturn(false);
+		when(config.coxRequireDeathCharge()).thenReturn(false);
+		when(config.coxRequireHumidify()).thenReturn(true);
+		when(config.coxRequireVengeance()).thenReturn(false);
+
+		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
+		isValidationRequired.setAccessible(true);
+
+		boolean result = (boolean) isValidationRequired.invoke(plugin, BossLocations.CHAMBERS_OF_XERIC);
+		assertTrue(result);
+	}
+
+	@Test
+	public void testIsValidationRequiredWithCoxVengeance() throws Exception
+	{
+		when(config.coxEnabled()).thenReturn(true);
+		when(config.coxRequireSpell()).thenReturn(false);
+		when(config.coxRequireDeathCharge()).thenReturn(false);
+		when(config.coxRequireHumidify()).thenReturn(false);
+		when(config.coxRequireVengeance()).thenReturn(true);
+
+		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
+		isValidationRequired.setAccessible(true);
+
+		boolean result = (boolean) isValidationRequired.invoke(plugin, BossLocations.CHAMBERS_OF_XERIC);
+		assertTrue(result);
+	}
+
+	@Test
+	public void testIsValidationRequiredWithCoxNoRequirements() throws Exception
+	{
+		when(config.coxEnabled()).thenReturn(true);
+		when(config.coxRequireSpell()).thenReturn(false);
+		when(config.coxRequireDeathCharge()).thenReturn(false);
+		when(config.coxRequireHumidify()).thenReturn(false);
+		when(config.coxRequireVengeance()).thenReturn(false);
+
+		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
+		isValidationRequired.setAccessible(true);
+
+		boolean result = (boolean) isValidationRequired.invoke(plugin, BossLocations.CHAMBERS_OF_XERIC);
+		assertFalse(result);
+	}
+
+	@Test
+	public void testValidateConfigurationShowsConflictWarningForCox() throws Exception
+	{
+		// Both Arceuus and Lunar spells enabled — conflict
+		when(config.coxRequireSpell()).thenReturn(true);
+		when(config.coxRequireDeathCharge()).thenReturn(false);
+		when(config.coxRequireHumidify()).thenReturn(true);
+		when(config.coxRequireVengeance()).thenReturn(false);
+
+		Method validateConfiguration = plugin.getClass().getDeclaredMethod("validateConfiguration", String.class);
+		validateConfiguration.setAccessible(true);
+
+		validateConfiguration.invoke(plugin, "coxRequireHumidify");
+
+		ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
+		verify(client).addChatMessage(
+			eq(ChatMessageType.GAMEMESSAGE),
+			eq(""),
+			messageCaptor.capture(),
+			isNull()
+		);
+
+		String message = messageCaptor.getValue();
+		assertTrue(message.contains("conflicting spellbook"));
+		assertTrue(message.contains("Chambers of Xeric"));
+	}
+
+	@Test
+	public void testValidateConfigurationNoConflictWarningWhenOnlyLunarSpells() throws Exception
+	{
+		when(config.coxRequireSpell()).thenReturn(false);
+		when(config.coxRequireDeathCharge()).thenReturn(false);
+		when(config.coxRequireHumidify()).thenReturn(true);
+		when(config.coxRequireVengeance()).thenReturn(false);
+		when(config.coxEnabled()).thenReturn(true);
+
+		Method validateConfiguration = plugin.getClass().getDeclaredMethod("validateConfiguration", String.class);
+		validateConfiguration.setAccessible(true);
+
+		validateConfiguration.invoke(plugin, "coxRequireHumidify");
+
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+	}
+
+	@Test
 	public void testOnConfigChangedIgnoresOtherGroups()
 	{
 		ConfigChanged event = mock(ConfigChanged.class);
@@ -287,7 +397,8 @@ public class AccessDeniedPluginUnitTest
 		plugin.onMenuEntryAdded(event);
 
 		// Should not modify menu
-		verify(client, never()).getMenuEntries();
+		verify(menu, never()).getMenuEntries();
+
 	}
 
 	// Helper methods for reflection

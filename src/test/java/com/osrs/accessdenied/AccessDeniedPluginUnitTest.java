@@ -8,7 +8,6 @@ import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.MenuEntryAdded;
-import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import org.junit.Before;
@@ -19,8 +18,6 @@ import org.mockito.MockitoAnnotations;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.Map;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -41,9 +38,6 @@ public class AccessDeniedPluginUnitTest
 	private PlayerStateValidator validator;
 
 	@Mock
-	private ClientThread clientThread;
-
-	@Mock
 	private ConfigManager configManager;
 
 	@Mock
@@ -61,7 +55,6 @@ public class AccessDeniedPluginUnitTest
 		setField(plugin, "client", client);
 		setField(plugin, "config", config);
 		setField(plugin, "playerStateValidator", validator);
-		setField(plugin, "clientThread", clientThread);
 
 		// Setup default mocks
 		when(client.getLocalPlayer()).thenReturn(player);
@@ -75,15 +68,8 @@ public class AccessDeniedPluginUnitTest
 		// Verify state is cleared
 		assertNull(getField(plugin, "currentLocation"));
 		assertNull(getField(plugin, "currentRegions"));
-		
-		Map<String, ValidationResult> validationCache = getField(plugin, "validationCache");
-		assertTrue(validationCache.isEmpty());
-		
-		Map<String, Long> validationCacheTimestamp = getField(plugin, "validationCacheTimestamp");
-		assertTrue(validationCacheTimestamp.isEmpty());
-		
-		Map<String, Boolean> menuModifiedState = getField(plugin, "menuModifiedState");
-		assertTrue(menuModifiedState.isEmpty());
+		assertNull(getField(plugin, "lastResult"));
+		assertTrue((boolean) getField(plugin, "lastResultWasValid"));
 	}
 
 	@Test
@@ -94,9 +80,8 @@ public class AccessDeniedPluginUnitTest
 		// Verify state is cleared
 		assertNull(getField(plugin, "currentLocation"));
 		assertNull(getField(plugin, "currentRegions"));
-		
-		Map<String, ValidationResult> validationCache = getField(plugin, "validationCache");
-		assertTrue(validationCache.isEmpty());
+		assertNull(getField(plugin, "lastResult"));
+		assertTrue((boolean) getField(plugin, "lastResultWasValid"));
 	}
 
 	@Test
@@ -287,8 +272,8 @@ public class AccessDeniedPluginUnitTest
 		
 		plugin.onConfigChanged(event);
 
-		// Should not trigger any validation
-		verify(clientThread, never()).invokeLater(any(Runnable.class));
+		// Should not send any chat messages or interact with client
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
 	}
 
 	@Test

@@ -51,6 +51,30 @@ public interface AccessDeniedConfig extends Config
 		return false;
 	}
 
+	@ConfigItem(
+		keyName = "nexBanChugJug",
+		name = "Disallow Chug Jug",
+		description = "Fail validation if a Chug Jug is found in your inventory.",
+		section = nexSection,
+		position = 3
+	)
+	default boolean nexBanChugJug()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "nexBanSaturatedHeart",
+		name = "Disallow Saturated Heart",
+		description = "Fail validation if a Saturated Heart is found in your inventory.",
+		section = nexSection,
+		position = 4
+	)
+	default boolean nexBanSaturatedHeart()
+	{
+		return false;
+	}
+
 	@ConfigSection(
 		name = "Theatre of Blood",
 		description = "Configuration for Theatre of Blood requirements",
@@ -94,6 +118,30 @@ public interface AccessDeniedConfig extends Config
 		return false;
 	}
 
+	@ConfigItem(
+		keyName = "tobBanChugJug",
+		name = "Disallow Chug Jug",
+		description = "Fail validation if a Chug Jug is found in your inventory.",
+		section = tobSection,
+		position = 3
+	)
+	default boolean tobBanChugJug()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "tobBanSaturatedHeart",
+		name = "Disallow Saturated Heart",
+		description = "Fail validation if a Saturated Heart is found in your inventory.",
+		section = tobSection,
+		position = 4
+	)
+	default boolean tobBanSaturatedHeart()
+	{
+		return false;
+	}
+
 	@ConfigSection(
 		name = "Tombs of Amascut",
 		description = "Configuration for Tombs of Amascut requirements",
@@ -133,6 +181,30 @@ public interface AccessDeniedConfig extends Config
 		position = 2
 	)
 	default boolean toaRequireDeathCharge()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "toaBanChugJug",
+		name = "Disallow Chug Jug",
+		description = "Fail validation if a Chug Jug is found in your inventory.",
+		section = toaSection,
+		position = 3
+	)
+	default boolean toaBanChugJug()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "toaBanSaturatedHeart",
+		name = "Disallow Saturated Heart",
+		description = "Fail validation if a Saturated Heart is found in your inventory.",
+		section = toaSection,
+		position = 4
+	)
+	default boolean toaBanSaturatedHeart()
 	{
 		return false;
 	}
@@ -204,6 +276,30 @@ public interface AccessDeniedConfig extends Config
 		return false;
 	}
 
+	@ConfigItem(
+		keyName = "coxBanChugJug",
+		name = "Disallow Chug Jug",
+		description = "Fail validation if a Chug Jug is found in your inventory.",
+		section = coxSection,
+		position = 5
+	)
+	default boolean coxBanChugJug()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "coxBanSaturatedHeart",
+		name = "Disallow Saturated Heart",
+		description = "Fail validation if a Saturated Heart is found in your inventory.",
+		section = coxSection,
+		position = 6
+	)
+	default boolean coxBanSaturatedHeart()
+	{
+		return false;
+	}
+
 	@ConfigSection(
 		name = "Inferno",
 		description = "Configuration for Inferno requirements",
@@ -243,6 +339,30 @@ public interface AccessDeniedConfig extends Config
 		position = 2
 	)
 	default boolean infernoRequireBloodBarrage()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "infernoBanChugJug",
+		name = "Disallow Chug Jug",
+		description = "Fail validation if a Chug Jug is found in your inventory.",
+		section = infernoSection,
+		position = 3
+	)
+	default boolean infernoBanChugJug()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "infernoBanSaturatedHeart",
+		name = "Disallow Saturated Heart",
+		description = "Fail validation if a Saturated Heart is found in your inventory.",
+		section = infernoSection,
+		position = 4
+	)
+	default boolean infernoBanSaturatedHeart()
 	{
 		return false;
 	}

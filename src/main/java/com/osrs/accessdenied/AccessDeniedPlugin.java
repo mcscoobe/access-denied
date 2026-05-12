@@ -244,28 +244,33 @@ public class AccessDeniedPlugin extends Plugin
 		if ("nexEnabled".equals(configKey) && config.nexEnabled())
 		{
 			locationName = "Nex";
-			hasRequirements = config.nexRequireSpell() || config.nexRequireDeathCharge();
+			hasRequirements = config.nexRequireSpell() || config.nexRequireDeathCharge()
+				|| config.nexBanChugJug() || config.nexBanSaturatedHeart();
 		}
 		else if ("tobEnabled".equals(configKey) && config.tobEnabled())
 		{
 			locationName = "Theatre of Blood";
-			hasRequirements = config.tobRequireSpell() || config.tobRequireDeathCharge();
+			hasRequirements = config.tobRequireSpell() || config.tobRequireDeathCharge()
+				|| config.tobBanChugJug() || config.tobBanSaturatedHeart();
 		}
 		else if ("toaEnabled".equals(configKey) && config.toaEnabled())
 		{
 			locationName = "Tombs of Amascut";
-			hasRequirements = config.toaRequireSpell() || config.toaRequireDeathCharge();
+			hasRequirements = config.toaRequireSpell() || config.toaRequireDeathCharge()
+				|| config.toaBanChugJug() || config.toaBanSaturatedHeart();
 		}
 		else if ("coxEnabled".equals(configKey) && config.coxEnabled())
 		{
 			locationName = "Chambers of Xeric";
 			hasRequirements = config.coxRequireSpell() || config.coxRequireDeathCharge()
-				|| config.coxRequireHumidify() || config.coxRequireVengeance();
+				|| config.coxRequireHumidify() || config.coxRequireVengeance()
+				|| config.coxBanChugJug() || config.coxBanSaturatedHeart();
 		}
 		else if ("infernoEnabled".equals(configKey) && config.infernoEnabled())
 		{
 			locationName = "Inferno";
-			hasRequirements = config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage();
+			hasRequirements = config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage()
+				|| config.infernoBanChugJug() || config.infernoBanSaturatedHeart();
 		}
 
 		if (locationName != null && !hasRequirements)
@@ -284,11 +289,11 @@ public class AccessDeniedPlugin extends Plugin
 		switch (location.getId())
 		{
 			case "nex":
-				return validateRaidRequirements(config.nexRequireSpell(), config.nexRequireDeathCharge());
+				return validateRaidRequirements(config.nexRequireSpell(), config.nexRequireDeathCharge(), config.nexBanChugJug(), config.nexBanSaturatedHeart());
 			case "tob":
-				return validateRaidRequirements(config.tobRequireSpell(), config.tobRequireDeathCharge());
+				return validateRaidRequirements(config.tobRequireSpell(), config.tobRequireDeathCharge(), config.tobBanChugJug(), config.tobBanSaturatedHeart());
 			case "toa":
-				return validateRaidRequirements(config.toaRequireSpell(), config.toaRequireDeathCharge());
+				return validateRaidRequirements(config.toaRequireSpell(), config.toaRequireDeathCharge(), config.toaBanChugJug(), config.toaBanSaturatedHeart());
 			case "cox":
 				return validateCoxRequirements();
 			case "inferno":
@@ -298,37 +303,37 @@ public class AccessDeniedPlugin extends Plugin
 		}
 	}
 
-	private ValidationResult validateRaidRequirements(boolean requireThralls, boolean requireDeathCharge)
+	private ValidationResult validateRaidRequirements(boolean requireThralls, boolean requireDeathCharge, boolean banChugJug, boolean banSaturatedHeart)
 	{
-		boolean hasSpellbook = playerStateValidator.isOnArceuusSpellbook();
 		java.util.List<String> missing = new java.util.ArrayList<>();
 
-		boolean thrallsValid = true;
 		if (requireThralls)
 		{
-			boolean hasRunes = playerStateValidator.hasResurrectGreaterGhostRunes();
-			boolean hasBook = playerStateValidator.hasBookOfTheDead();
-			if (!hasRunes) { missing.add("runes for Thralls"); thrallsValid = false; }
-			if (!hasBook) { missing.add("Book of the Dead"); thrallsValid = false; }
+			if (!playerStateValidator.hasResurrectGreaterGhostRunes()) { missing.add("runes for Thralls"); }
+			if (!playerStateValidator.hasBookOfTheDead()) { missing.add("Book of the Dead"); }
 		}
 
-		boolean deathChargeValid = true;
 		if (requireDeathCharge)
 		{
-			boolean hasRunes = playerStateValidator.hasDeathChargeRunes();
-			if (!hasRunes) { missing.add("runes for Death Charge"); deathChargeValid = false; }
+			if (!playerStateValidator.hasDeathChargeRunes()) { missing.add("runes for Death Charge"); }
 		}
 
-		if (!hasSpellbook)
+		if (requireThralls || requireDeathCharge)
 		{
-			missing.add("Arceuus spellbook");
+			if (!playerStateValidator.isOnArceuusSpellbook()) { missing.add("Arceuus spellbook"); }
 		}
 
-		boolean allValid = hasSpellbook
-			&& (!requireThralls || thrallsValid)
-			&& (!requireDeathCharge || deathChargeValid);
+		if (banChugJug && playerStateValidator.hasChugJug())
+		{
+			missing.add("remove Chug Jug");
+		}
 
-		if (allValid)
+		if (banSaturatedHeart && playerStateValidator.hasSaturatedHeart())
+		{
+			missing.add("remove Saturated Heart");
+		}
+
+		if (missing.isEmpty())
 		{
 			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
 		}
@@ -370,6 +375,16 @@ public class AccessDeniedPlugin extends Plugin
 			if (!playerStateValidator.isOnLunarSpellbook()) { missing.add("Lunar spellbook"); }
 		}
 
+		if (config.coxBanChugJug() && playerStateValidator.hasChugJug())
+		{
+			missing.add("remove Chugging Barrel");
+		}
+
+		if (config.coxBanSaturatedHeart() && playerStateValidator.hasSaturatedHeart())
+		{
+			missing.add("remove Saturated Heart");
+		}
+
 		if (missing.isEmpty())
 		{
 			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
@@ -381,31 +396,34 @@ public class AccessDeniedPlugin extends Plugin
 
 	private ValidationResult validateInfernoRequirements()
 	{
-		boolean hasSpellbook = playerStateValidator.isOnAncientSpellbook();
 		java.util.List<String> missing = new java.util.ArrayList<>();
 
-		boolean iceValid = true;
 		if (config.infernoRequireIceBarrage())
 		{
-			if (!playerStateValidator.hasIceBarrageRunes()) { missing.add("runes for Ice Barrage"); iceValid = false; }
+			if (!playerStateValidator.hasIceBarrageRunes()) { missing.add("runes for Ice Barrage"); }
 		}
 
-		boolean bloodValid = true;
 		if (config.infernoRequireBloodBarrage())
 		{
-			if (!playerStateValidator.hasBloodBarrageRunes()) { missing.add("runes for Blood Barrage"); bloodValid = false; }
+			if (!playerStateValidator.hasBloodBarrageRunes()) { missing.add("runes for Blood Barrage"); }
 		}
 
-		if (!hasSpellbook)
+		if (config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage())
 		{
-			missing.add("Ancient spellbook");
+			if (!playerStateValidator.isOnAncientSpellbook()) { missing.add("Ancient spellbook"); }
 		}
 
-		boolean allValid = hasSpellbook
-			&& (!config.infernoRequireIceBarrage() || iceValid)
-			&& (!config.infernoRequireBloodBarrage() || bloodValid);
+		if (config.infernoBanChugJug() && playerStateValidator.hasChugJug())
+		{
+			missing.add("remove Chug Jug");
+		}
 
-		if (allValid)
+		if (config.infernoBanSaturatedHeart() && playerStateValidator.hasSaturatedHeart())
+		{
+			missing.add("remove Saturated Heart");
+		}
+
+		if (missing.isEmpty())
 		{
 			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
 		}
@@ -424,16 +442,21 @@ public class AccessDeniedPlugin extends Plugin
 		switch (location.getId())
 		{
 			case "nex":
-				return config.nexEnabled() && (config.nexRequireSpell() || config.nexRequireDeathCharge());
+				return config.nexEnabled() && (config.nexRequireSpell() || config.nexRequireDeathCharge()
+					|| config.nexBanChugJug() || config.nexBanSaturatedHeart());
 			case "tob":
-				return config.tobEnabled() && (config.tobRequireSpell() || config.tobRequireDeathCharge());
+				return config.tobEnabled() && (config.tobRequireSpell() || config.tobRequireDeathCharge()
+					|| config.tobBanChugJug() || config.tobBanSaturatedHeart());
 			case "toa":
-				return config.toaEnabled() && (config.toaRequireSpell() || config.toaRequireDeathCharge());
+				return config.toaEnabled() && (config.toaRequireSpell() || config.toaRequireDeathCharge()
+					|| config.toaBanChugJug() || config.toaBanSaturatedHeart());
 			case "cox":
 				return config.coxEnabled() && (config.coxRequireSpell() || config.coxRequireDeathCharge()
-					|| config.coxRequireHumidify() || config.coxRequireVengeance());
+					|| config.coxRequireHumidify() || config.coxRequireVengeance()
+					|| config.coxBanChugJug() || config.coxBanSaturatedHeart());
 			case "inferno":
-				return config.infernoEnabled() && (config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage());
+				return config.infernoEnabled() && (config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage()
+					|| config.infernoBanChugJug() || config.infernoBanSaturatedHeart());
 			default:
 				return false;
 		}

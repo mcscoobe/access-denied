@@ -7,6 +7,7 @@ import net.runelite.api.EnumID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarbitID;
 
 import javax.inject.Inject;
@@ -256,6 +257,33 @@ public class PlayerStateValidator
 		}
 
 		log.debug("Kodai wand NOT found");
+		return false;
+	}
+
+	public boolean hasChugJug()
+	{
+		return hasItemInInventory(ItemID.MM_PREPOT_DEVICE);
+	}
+
+	public boolean hasSaturatedHeart()
+	{
+		return hasItemInInventory(ItemID.SATURATED_HEART);
+	}
+
+	private boolean hasItemInInventory(int itemId)
+	{
+		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+		if (inventory == null)
+		{
+			return false;
+		}
+		for (Item item : inventory.getItems())
+		{
+			if (item != null && item.getId() == itemId)
+			{
+				return true;
+			}
+		}
 		return false;
 	}
 

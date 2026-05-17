@@ -11,3 +11,5 @@ nbproject/
 *.class
 *.plugin
 logback*
+CLAUDE.md
+.claude/settings.local.json

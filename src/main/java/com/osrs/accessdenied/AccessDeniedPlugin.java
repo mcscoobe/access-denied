@@ -17,6 +17,15 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.raids.Raid;
+import net.runelite.client.plugins.raids.RaidRoom;
+import net.runelite.client.plugins.raids.RoomType;
+import net.runelite.client.plugins.raids.events.RaidReset;
+import net.runelite.client.plugins.raids.events.RaidScouted;
+import net.runelite.client.plugins.raids.solver.Room;
+import net.runelite.client.util.Text;
+import java.util.HashSet;
+import java.util.Set;
 
 @Slf4j
 @PluginDescriptor(
@@ -41,6 +50,8 @@ public class AccessDeniedPlugin extends Plugin
 	private ValidationResult lastResult;
 	private boolean lastResultWasValid = true;
 	private boolean coxRaidActive = false;
+	private Raid currentCoxRaid;
+	private boolean coxScoutingRaidGood = false;
 
 	@Override
 	protected void startUp()
@@ -50,6 +61,8 @@ public class AccessDeniedPlugin extends Plugin
 		lastResult = null;
 		lastResultWasValid = true;
 		coxRaidActive = false;
+		currentCoxRaid = null;
+		coxScoutingRaidGood = false;
 	}
 
 	@Override
@@ -60,6 +73,8 @@ public class AccessDeniedPlugin extends Plugin
 		lastResult = null;
 		lastResultWasValid = true;
 		coxRaidActive = false;
+		currentCoxRaid = null;
+		coxScoutingRaidGood = false;
 	}
 
 	@Subscribe
@@ -133,9 +148,33 @@ public class AccessDeniedPlugin extends Plugin
 		{
 			log.debug("CoX raid started — suppressing menu swaps and validation");
 			coxRaidActive = true;
+			coxScoutingRaidGood = false;
 			lastResult = null;
 			lastResultWasValid = true;
 		}
+	}
+
+	@SuppressWarnings("unused")
+	@Subscribe
+	public void onRaidScouted(RaidScouted event)
+	{
+		currentCoxRaid = event.getRaid();
+		log.debug("RaidScouted: layout={}", currentCoxRaid.getLayout().toCodeString());
+		for (Room layoutRoom : currentCoxRaid.getLayout().getRooms())
+		{
+			RaidRoom room = currentCoxRaid.getRoom(layoutRoom.getPosition());
+			if (room == null) continue;
+			log.debug("  room position={} type={} name={}", layoutRoom.getPosition(), room.getType(), room.getName());
+		}
+		evaluateCoxScoutingRaid();
+	}
+
+	@SuppressWarnings("unused")
+	@Subscribe
+	public void onRaidReset(RaidReset event)
+	{
+		currentCoxRaid = null;
+		coxScoutingRaidGood = false;
 	}
 
 	@Subscribe
@@ -151,16 +190,16 @@ public class AccessDeniedPlugin extends Plugin
 		// Reset state so the next tick re-evaluates with the new config
 		lastResult = null;
 		lastResultWasValid = true;
+
+		if (event.getKey().startsWith("coxScout"))
+		{
+			evaluateCoxScoutingRaid();
+		}
 	}
 
 	@Subscribe
 	public void onMenuEntryAdded(MenuEntryAdded event)
 	{
-		if (coxRaidActive || currentLocation == null || lastResult == null || lastResult.isValid())
-		{
-			return;
-		}
-
 		int eventType = event.getType();
 		if (eventType != MenuAction.GAME_OBJECT_FIRST_OPTION.getId()
 			&& eventType != MenuAction.GAME_OBJECT_SECOND_OPTION.getId())
@@ -169,25 +208,133 @@ public class AccessDeniedPlugin extends Plugin
 		}
 
 		int objectId = event.getIdentifier();
-		Integer validatedObjectId = BossLocations.getObjectForLocation(currentLocation);
-		if (validatedObjectId == null || validatedObjectId != objectId)
+
+		if (!coxRaidActive && currentLocation != null && lastResult != null && !lastResult.isValid())
+		{
+			Integer validatedObjectId = BossLocations.getObjectForLocation(currentLocation);
+			if (validatedObjectId != null && validatedObjectId == objectId)
+			{
+				reorderMenuToWalkHere(client.getMenu().getMenuEntries());
+				return;
+			}
+		}
+
+		if (objectId == BossLocations.COX_RELOAD_OBJECT)
+		{
+			log.debug("onMenuEntryAdded: reload object seen — coxScoutingRaidGood={}", coxScoutingRaidGood);
+			if (coxScoutingRaidGood)
+			{
+				removeGameObjectEntriesForObject(BossLocations.COX_RELOAD_OBJECT);
+			}
+		}
+	}
+
+	private void evaluateCoxScoutingRaid()
+	{
+		log.debug("evaluateCoxScoutingRaid: enabled={} raidPresent={}", config.coxScoutingEnabled(), currentCoxRaid != null);
+
+		if (!config.coxScoutingEnabled() || currentCoxRaid == null)
+		{
+			coxScoutingRaidGood = false;
+			return;
+		}
+
+		Set<String> roomWhitelist = new HashSet<>(Text.fromCSV(config.coxScoutWhitelistedRooms().toLowerCase()));
+		Set<String> layoutWhitelist = new HashSet<>(Text.fromCSV(config.coxScoutWhitelistedLayouts().toLowerCase()));
+
+		log.debug("evaluateCoxScoutingRaid: roomWhitelist={} layoutWhitelist={}", roomWhitelist, layoutWhitelist);
+
+		if (roomWhitelist.isEmpty() && layoutWhitelist.isEmpty())
+		{
+			log.debug("evaluateCoxScoutingRaid: both lists empty — no protection");
+			coxScoutingRaidGood = false;
+			return;
+		}
+
+		if (!roomWhitelist.isEmpty())
+		{
+			for (Room layoutRoom : currentCoxRaid.getLayout().getRooms())
+			{
+				RaidRoom room = currentCoxRaid.getRoom(layoutRoom.getPosition());
+				if (room == null || (room.getType() != RoomType.COMBAT && room.getType() != RoomType.PUZZLE))
+				{
+					continue;
+				}
+				String roomName = room.getName().toLowerCase();
+				boolean inWhitelist = roomWhitelist.contains(roomName);
+				log.debug("evaluateCoxScoutingRaid: room '{}' (type={}) inWhitelist={}", roomName, room.getType(), inWhitelist);
+				if (!inWhitelist)
+				{
+					log.debug("evaluateCoxScoutingRaid: room '{}' not in whitelist — raid is bad", roomName);
+					coxScoutingRaidGood = false;
+					return;
+				}
+			}
+		}
+
+		if (!layoutWhitelist.isEmpty())
+		{
+			String layoutCode = currentCoxRaid.getLayout().toCodeString().toLowerCase();
+			boolean inWhitelist = layoutWhitelist.contains(layoutCode);
+			log.debug("evaluateCoxScoutingRaid: layoutCode='{}' inWhitelist={}", layoutCode, inWhitelist);
+			if (!inWhitelist)
+			{
+				log.debug("evaluateCoxScoutingRaid: layout '{}' not in whitelist — raid is bad", layoutCode);
+				coxScoutingRaidGood = false;
+				return;
+			}
+		}
+
+		boolean wasGood = coxScoutingRaidGood;
+		coxScoutingRaidGood = true;
+		log.debug("evaluateCoxScoutingRaid: raid is GOOD (wasGood={})", wasGood);
+
+		if (!wasGood)
+		{
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+				"Good raid found — reload protection active.", null);
+		}
+	}
+
+	private void removeGameObjectEntriesForObject(int objectId)
+	{
+		MenuEntry[] entries = client.getMenu().getMenuEntries();
+		if (entries == null || entries.length == 0)
 		{
 			return;
 		}
 
-		reorderMenuToWalkHere(client.getMenu().getMenuEntries());
+		java.util.List<MenuEntry> kept = new java.util.ArrayList<>();
+		for (MenuEntry entry : entries)
+		{
+			if (entry.getIdentifier() == objectId
+				&& (entry.getType() == MenuAction.GAME_OBJECT_FIRST_OPTION
+					|| entry.getType() == MenuAction.GAME_OBJECT_SECOND_OPTION))
+			{
+				log.debug("removeGameObjectEntries: removing '{}' for object {}", entry.getOption(), objectId);
+				continue;
+			}
+			kept.add(entry);
+		}
+
+		if (kept.size() < entries.length)
+		{
+			client.getMenu().setMenuEntries(kept.toArray(new MenuEntry[0]));
+		}
 	}
 
 	private void reorderMenuToWalkHere(MenuEntry[] menuEntries)
 	{
 		if (menuEntries == null || menuEntries.length == 0)
 		{
+			log.debug("reorderMenuToWalkHere: no menu entries");
 			return;
 		}
 
 		int walkHereIndex = -1;
 		for (int i = 0; i < menuEntries.length; i++)
 		{
+			log.debug("reorderMenuToWalkHere: entry[{}] type={} option='{}'", i, menuEntries[i].getType(), menuEntries[i].getOption());
 			if (menuEntries[i].getType() == MenuAction.WALK)
 			{
 				walkHereIndex = i;
@@ -195,8 +342,15 @@ public class AccessDeniedPlugin extends Plugin
 			}
 		}
 
-		if (walkHereIndex == -1 || walkHereIndex == menuEntries.length - 1)
+		if (walkHereIndex == -1)
 		{
+			log.debug("reorderMenuToWalkHere: no Walk Here entry found");
+			return;
+		}
+
+		if (walkHereIndex == menuEntries.length - 1)
+		{
+			log.debug("reorderMenuToWalkHere: Walk Here is already the top option");
 			return;
 		}
 

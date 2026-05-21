@@ -301,9 +301,52 @@ public interface AccessDeniedConfig extends Config
 	}
 
 	@ConfigSection(
+		name = "Chambers of Xeric Scouting",
+		description = "Protect against accidentally reloading a good CoX raid layout during scouting",
+		position = 4
+	)
+	String coxScoutingSection = "coxScouting";
+
+	@ConfigItem(
+		keyName = "coxScoutingEnabled",
+		name = "Enable Scouting Protection",
+		description = "When a scouted raid passes all configured whitelist checks, replaces the left-click on the reload object with Walk Here to prevent accidental reloads.",
+		section = coxScoutingSection,
+		position = 0
+	)
+	default boolean coxScoutingEnabled()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "coxScoutWhitelistedRooms",
+		name = "Whitelisted Rooms",
+		description = "Comma-separated list of acceptable room names (e.g. Vespula, Vasa Nistirio). Every room in the raid must appear in this list for the raid to be considered good. Leave empty to skip the room check.",
+		section = coxScoutingSection,
+		position = 1
+	)
+	default String coxScoutWhitelistedRooms()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "coxScoutWhitelistedLayouts",
+		name = "Whitelisted Layouts",
+		description = "Comma-separated list of acceptable layout codes (e.g. fscav). The raid layout code must appear in this list for the raid to be considered good. Leave empty to skip the layout check.",
+		section = coxScoutingSection,
+		position = 2
+	)
+	default String coxScoutWhitelistedLayouts()
+	{
+		return "";
+	}
+
+	@ConfigSection(
 		name = "Inferno",
 		description = "Configuration for Inferno requirements",
-		position = 4
+		position = 5
 	)
 	String infernoSection = "inferno";
 

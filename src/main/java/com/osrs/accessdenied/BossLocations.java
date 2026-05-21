@@ -89,6 +89,12 @@ public class BossLocations
 	public static final int COX_OBJECT = 29789;
 
 	/**
+	 * Game object ID for the CoX raid reload interaction used during scouting.
+	 * Object ID 49999 = COX_RELOAD
+	 */
+	public static final int COX_RELOAD_OBJECT = 49999;
+
+	/**
 	 * Game object ID that requires validation within the Inferno region.
 	 * Object ID 30352 = INFERNO_ENTRANCE
 	 */

@@ -45,6 +45,10 @@ public class AccessDeniedPlugin extends Plugin
 	@Inject
 	private PlayerStateValidator playerStateValidator;
 
+	@SuppressWarnings("unused")
+	@Inject
+	private ConfigManager configManager;
+
 	private BossLocation currentLocation;
 	private int[] currentRegions;
 	private ValidationResult lastResult;
@@ -185,6 +189,11 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
+		if (blockConflictingCoxSpellbookToggle(event))
+		{
+			return;
+		}
+
 		validateConfiguration(event.getKey());
 
 		// Reset state so the next tick re-evaluates with the new config
@@ -209,13 +218,24 @@ public class AccessDeniedPlugin extends Plugin
 
 		int objectId = event.getIdentifier();
 
-		if (!coxRaidActive && currentLocation != null && lastResult != null && !lastResult.isValid())
+		if (!coxRaidActive && currentLocation != null)
 		{
 			Integer validatedObjectId = BossLocations.getObjectForLocation(currentLocation);
 			if (validatedObjectId != null && validatedObjectId == objectId)
 			{
-				reorderMenuToWalkHere(client.getMenu().getMenuEntries());
-				return;
+				// The first menu open can happen before the first game tick has validated;
+				// compute on demand so right-clicking immediately on arrival is still protected.
+				if (lastResult == null && isValidationRequired(currentLocation))
+				{
+					lastResult = validateLocationRequirements(currentLocation);
+					lastResultWasValid = lastResult.isValid();
+				}
+
+				if (lastResult != null && !lastResult.isValid())
+				{
+					reorderMenuToWalkHere(client.getMenu().getMenuEntries());
+					return;
+				}
 			}
 		}
 
@@ -370,22 +390,47 @@ public class AccessDeniedPlugin extends Plugin
 		client.getMenu().setMenuEntries(reordered);
 	}
 
-	private void validateConfiguration(String configKey)
+	/**
+	 * Prevent the CoX config from requiring spells on two spellbooks at once.
+	 * Thralls/Death Charge need Arceuus while Humidify/Vengeance need Lunar, so requiring
+	 * both groups can never be satisfied. When a CoX spell toggle is turned on while the
+	 * opposite group already has a toggle enabled, the new toggle is reset to off and the
+	 * player is told why. The reset re-fires onConfigChanged with {@code false}, which
+	 * passes through harmlessly.
+	 *
+	 * @return true if the change was blocked and reverted
+	 */
+	private boolean blockConflictingCoxSpellbookToggle(ConfigChanged event)
 	{
-		// Spellbook conflict check — fires on any CoX require* key change
-		if (configKey.startsWith("cox"))
+		String key = event.getKey();
+		boolean arceuusKey = "coxRequireSpell".equals(key) || "coxRequireDeathCharge".equals(key);
+		boolean lunarKey = "coxRequireHumidify".equals(key) || "coxRequireVengeance".equals(key);
+
+		if ((!arceuusKey && !lunarKey) || !Boolean.parseBoolean(event.getNewValue()))
 		{
-			boolean coxArceuusSpells = config.coxRequireSpell() || config.coxRequireDeathCharge();
-			boolean coxLunarSpells = config.coxRequireHumidify() || config.coxRequireVengeance();
-			if (coxArceuusSpells && coxLunarSpells)
-			{
-				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-					"<col=ff0000>Warning: Chambers of Xeric has conflicting spellbook requirements. " +
-					"Arceuus spells (Thralls/Death Charge) and Lunar spells (Humidify/Vengeance) cannot both be required.</col>",
-					null);
-			}
+			return false;
 		}
 
+		boolean oppositeGroupEnabled = arceuusKey
+			? config.coxRequireHumidify() || config.coxRequireVengeance()
+			: config.coxRequireSpell() || config.coxRequireDeathCharge();
+
+		if (!oppositeGroupEnabled)
+		{
+			return false;
+		}
+
+		configManager.setConfiguration("accessdenied", key, false);
+		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+			"<col=ff0000>Chambers of Xeric has conflicting spellbook requirements. " +
+			"Arceuus spells (Thralls/Death Charge) and Lunar spells (Humidify/Vengeance) cannot both be required — " +
+			"the toggle you just enabled has been turned back off.</col>",
+			null);
+		return true;
+	}
+
+	private void validateConfiguration(String configKey)
+	{
 		// No-requirements warning — fires only when a master Enabled toggle is turned on
 		if (!configKey.endsWith("Enabled"))
 		{

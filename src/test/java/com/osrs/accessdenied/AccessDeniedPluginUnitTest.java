@@ -39,7 +39,6 @@ public class AccessDeniedPluginUnitTest
 	@Mock
 	private PlayerStateValidator validator;
 
-	@SuppressWarnings("unused")
 	@Mock
 	private ConfigManager configManager;
 
@@ -71,6 +70,7 @@ public class AccessDeniedPluginUnitTest
 		setField(plugin, "client", client);
 		setField(plugin, "config", config);
 		setField(plugin, "playerStateValidator", validator);
+		setField(plugin, "configManager", configManager);
 
 		// Setup default mocks
 		when(client.getLocalPlayer()).thenReturn(player);
@@ -330,18 +330,20 @@ public class AccessDeniedPluginUnitTest
 	}
 
 	@Test
-	public void testValidateConfigurationShowsConflictWarningForCox() throws Exception
+	public void testOnConfigChangedBlocksConflictingCoxLunarToggle()
 	{
-		// Both Arceuus and Lunar spells enabled — conflict
+		// Arceuus spell already required — enabling a Lunar spell must be reverted
 		when(config.coxRequireSpell()).thenReturn(true);
 		when(config.coxRequireDeathCharge()).thenReturn(false);
-		when(config.coxRequireHumidify()).thenReturn(true);
-		when(config.coxRequireVengeance()).thenReturn(false);
 
-		Method validateConfiguration = plugin.getClass().getDeclaredMethod("validateConfiguration", String.class);
-		validateConfiguration.setAccessible(true);
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("coxRequireHumidify");
+		when(event.getNewValue()).thenReturn("true");
 
-		validateConfiguration.invoke(plugin, "coxRequireHumidify");
+		plugin.onConfigChanged(event);
+
+		verify(configManager).setConfiguration("accessdenied", "coxRequireHumidify", false);
 
 		ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
 		verify(client).addChatMessage(
@@ -357,19 +359,53 @@ public class AccessDeniedPluginUnitTest
 	}
 
 	@Test
-	public void testValidateConfigurationNoConflictWarningWhenOnlyLunarSpells() throws Exception
+	public void testOnConfigChangedBlocksConflictingCoxArceuusToggle()
+	{
+		// Lunar spell already required — enabling an Arceuus spell must be reverted
+		when(config.coxRequireHumidify()).thenReturn(false);
+		when(config.coxRequireVengeance()).thenReturn(true);
+
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("coxRequireSpell");
+		when(event.getNewValue()).thenReturn("true");
+
+		plugin.onConfigChanged(event);
+
+		verify(configManager).setConfiguration("accessdenied", "coxRequireSpell", false);
+	}
+
+	@Test
+	public void testOnConfigChangedAllowsLunarToggleWhenNoArceuusEnabled()
 	{
 		when(config.coxRequireSpell()).thenReturn(false);
 		when(config.coxRequireDeathCharge()).thenReturn(false);
-		when(config.coxRequireHumidify()).thenReturn(true);
-		when(config.coxRequireVengeance()).thenReturn(false);
-		when(config.coxEnabled()).thenReturn(true);
 
-		Method validateConfiguration = plugin.getClass().getDeclaredMethod("validateConfiguration", String.class);
-		validateConfiguration.setAccessible(true);
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("coxRequireHumidify");
+		when(event.getNewValue()).thenReturn("true");
 
-		validateConfiguration.invoke(plugin, "coxRequireHumidify");
+		plugin.onConfigChanged(event);
 
+		verify(configManager, never()).setConfiguration(anyString(), anyString(), any());
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+	}
+
+	@Test
+	public void testOnConfigChangedAllowsDisablingToggleDespiteConflict()
+	{
+		// Turning a toggle OFF is never blocked, even when the opposite group is enabled
+		when(config.coxRequireSpell()).thenReturn(true);
+
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("coxRequireHumidify");
+		when(event.getNewValue()).thenReturn("false");
+
+		plugin.onConfigChanged(event);
+
+		verify(configManager, never()).setConfiguration(anyString(), anyString(), any());
 		verify(client, never()).addChatMessage(any(), any(), any(), any());
 	}
 

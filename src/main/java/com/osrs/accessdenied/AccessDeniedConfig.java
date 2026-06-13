@@ -30,7 +30,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "nexRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
 		section = nexSection,
 		position = 1
 	)
@@ -97,7 +97,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "tobRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
 		section = tobSection,
 		position = 1
 	)
@@ -164,7 +164,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "toaRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
 		section = toaSection,
 		position = 1
 	)
@@ -231,7 +231,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "coxRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
 		section = coxSection,
 		position = 1
 	)
@@ -255,7 +255,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "coxRequireHumidify",
 		name = "Require Humidify",
-		description = "Require the ability to cast Humidify spell. Checks for: 1 Astral rune, 1 Fire rune, 1 Water rune, and Lunar spellbook.",
+		description = "Require the ability to cast Humidify spell. Checks for: 1 Astral rune, 1 Fire rune, 1 Water rune, and Lunar spellbook. Elemental staves and charged tomes cover their element's rune.",
 		section = coxSection,
 		position = 3
 	)
@@ -365,7 +365,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "infernoRequireIceBarrage",
 		name = "Require Ice Barrage",
-		description = "Require the ability to cast Ice Barrage spell. Checks for: 6 Water runes, 2 Death runes, 4 Blood runes, and Ancient spellbook. Kodai wand provides infinite water runes.",
+		description = "Require the ability to cast Ice Barrage spell. Checks for: 6 Water runes, 2 Death runes, 4 Blood runes, and Ancient spellbook. The Kodai wand, water staves, and the Tome of Water cover the Water runes.",
 		section = infernoSection,
 		position = 1
 	)
@@ -377,7 +377,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "infernoRequireBloodBarrage",
 		name = "Require Blood Barrage",
-		description = "Require the ability to cast Blood Barrage spell. Checks for: 4 Blood runes, 1 Soul rune, 1 Death rune, and Ancient spellbook. Aether runes can substitute for Soul runes.",
+		description = "Require the ability to cast Blood Barrage spell. Checks for: 4 Blood runes, 1 Soul rune, 4 Death runes, and Ancient spellbook. Aether runes can substitute for Soul runes.",
 		section = infernoSection,
 		position = 2
 	)

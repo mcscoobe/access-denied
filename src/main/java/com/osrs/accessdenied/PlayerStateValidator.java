@@ -13,7 +13,9 @@ import net.runelite.api.gameval.VarbitID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Service class responsible for validating player state against area requirements.
@@ -23,12 +25,63 @@ import java.util.Map;
 @Singleton
 public class PlayerStateValidator
 {
+	/**
+	 * Items that provide an unlimited supply of one or more standard runes.
+	 * Maps item ID to the rune ID(s) the item covers. Only the charged tome
+	 * variants are listed; uncharged tomes have distinct item IDs and provide nothing.
+	 */
+	private static final Map<Integer, int[]> INFINITE_RUNE_SOURCES = buildInfiniteRuneSources();
+
 	private final Client client;
 
 	@Inject
 	public PlayerStateValidator(Client client)
 	{
 		this.client = client;
+	}
+
+	private static Map<Integer, int[]> buildInfiniteRuneSources()
+	{
+		final int[] air = {556};
+		final int[] water = {555};
+		final int[] earth = {557};
+		final int[] fire = {554};
+		final int[] lava = {554, 557};
+		final int[] mud = {555, 557};
+		final int[] steam = {555, 554};
+		final int[] smoke = {556, 554};
+		final int[] mist = {556, 555};
+		final int[] dust = {556, 557};
+
+		Map<Integer, int[]> sources = new HashMap<>();
+		sources.put(ItemID.KODAI_WAND, water);
+		sources.put(ItemID.TOME_OF_FIRE, fire);
+		sources.put(ItemID.TOME_OF_WATER, water);
+		sources.put(ItemID.STAFF_OF_AIR, air);
+		sources.put(ItemID.AIR_BATTLESTAFF, air);
+		sources.put(ItemID.MYSTIC_AIR_STAFF, air);
+		sources.put(ItemID.STAFF_OF_WATER, water);
+		sources.put(ItemID.WATER_BATTLESTAFF, water);
+		sources.put(ItemID.MYSTIC_WATER_STAFF, water);
+		sources.put(ItemID.STAFF_OF_EARTH, earth);
+		sources.put(ItemID.EARTH_BATTLESTAFF, earth);
+		sources.put(ItemID.MYSTIC_EARTH_STAFF, earth);
+		sources.put(ItemID.STAFF_OF_FIRE, fire);
+		sources.put(ItemID.FIRE_BATTLESTAFF, fire);
+		sources.put(ItemID.MYSTIC_FIRE_STAFF, fire);
+		sources.put(ItemID.LAVA_BATTLESTAFF, lava);
+		sources.put(ItemID.MYSTIC_LAVA_STAFF, lava);
+		sources.put(ItemID.MUD_BATTLESTAFF, mud);
+		sources.put(ItemID.MYSTIC_MUD_STAFF, mud);
+		sources.put(ItemID.STEAM_BATTLESTAFF, steam);
+		sources.put(ItemID.MYSTIC_STEAM_BATTLESTAFF, steam);
+		sources.put(ItemID.SMOKE_BATTLESTAFF, smoke);
+		sources.put(ItemID.MYSTIC_SMOKE_BATTLESTAFF, smoke);
+		sources.put(ItemID.MIST_BATTLESTAFF, mist);
+		sources.put(ItemID.MYSTIC_MIST_BATTLESTAFF, mist);
+		sources.put(ItemID.DUST_BATTLESTAFF, dust);
+		sources.put(ItemID.MYSTIC_DUST_BATTLESTAFF, dust);
+		return sources;
 	}
 
 	/**
@@ -87,9 +140,9 @@ public class PlayerStateValidator
 
 	/**
 	 * Check if the player has the required runes to cast Thralls.
-	 * Thralls requires: 10 Fire runes, 2 Blood runes, 1 Cosmic rune
+	 * Thralls requires: 10 Fire runes, 5 Blood runes, 1 Cosmic rune
 	 * Aether runes count as both Soul and Cosmic runes.
-	 * 
+	 *
 	 * @return true if the player has sufficient runes, false otherwise
 	 */
 	public boolean hasResurrectGreaterGhostRunes()
@@ -171,7 +224,8 @@ public class PlayerStateValidator
 	 * Check if the player has the required runes to cast Ice Barrage.
 	 * Ice Barrage requires: 6 Water runes, 2 Death runes, 4 Blood runes
 	 * Note: Ice Barrage does not use Soul or Cosmic runes, so Aether runes don't help.
-	 * Special case: Kodai wand provides infinite water runes.
+	 * Infinite water-rune sources (Kodai wand, Tome of Water, water staves) satisfy
+	 * the water requirement via the generic infinite-rune-source check.
 	 * @return true if the player has sufficient runes, false otherwise
 	 */
 	public boolean hasIceBarrageRunes()
@@ -184,14 +238,6 @@ public class PlayerStateValidator
 
 		log.debug("Checking Ice Barrage runes:");
 		log.debug("  Required: Water x6, Death x2, Blood x4");
-
-		// Check if player has Kodai wand (provides infinite water runes)
-		if (hasKodaiWand())
-		{
-			log.debug("  Kodai wand found - water runes not required");
-			// Remove water rune requirement
-			requiredRunes.remove(555);
-		}
 
 		return hasRequiredRunesWithSubstitution(requiredRunes, "Ice Barrage");
 	}
@@ -218,46 +264,49 @@ public class PlayerStateValidator
 	}
 
 	/**
-	 * Check if the player has a Kodai wand equipped or in their inventory.
-	 * Kodai wand provides infinite water runes for spells.
-	 * Item ID: 21006 = Kodai wand
-	 * @return true if the player has a Kodai wand, false otherwise
+	 * Scan inventory and worn equipment for items that grant unlimited runes
+	 * (Kodai wand, charged tomes, elemental and combination staves).
+	 * This is a capability check matching the previous Kodai behaviour: carrying the
+	 * item is enough, it does not need to be wielded. As a result it can over-suppress
+	 * when a spell needs two elements covered only by two staves that cannot be wielded
+	 * at once (e.g. Humidify with separate fire and water staves); this only affects
+	 * trivial single-rune requirements and is accepted.
+	 *
+	 * @return set of standard rune IDs the player has an unlimited supply of
 	 */
-	private boolean hasKodaiWand()
+	private Set<Integer> getInfiniteRuneSources()
 	{
-		final int KODAI_WAND_ID = 21006;
-		final int EQUIPMENT_CONTAINER_ID = 94;
+		Set<Integer> covered = new HashSet<>();
+		int[] containerIds = {InventoryID.INV, InventoryID.WORN};
 
-		// Check inventory
-		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
-		if (inventory != null)
+		for (int containerId : containerIds)
 		{
-			for (Item item : inventory.getItems())
+			ItemContainer container = client.getItemContainer(containerId);
+			if (container == null)
 			{
-				if (item != null && item.getId() == KODAI_WAND_ID)
+				continue;
+			}
+
+			for (Item item : container.getItems())
+			{
+				if (item == null)
 				{
-					log.debug("Kodai wand found in inventory");
-					return true;
+					continue;
+				}
+
+				int[] runes = INFINITE_RUNE_SOURCES.get(item.getId());
+				if (runes != null)
+				{
+					log.debug("Infinite rune source found: item {} covers runes {}", item.getId(), runes);
+					for (int runeId : runes)
+					{
+						covered.add(runeId);
+					}
 				}
 			}
 		}
 
-		// Check equipment (container ID 94)
-		ItemContainer equipment = client.getItemContainer(EQUIPMENT_CONTAINER_ID);
-		if (equipment != null)
-		{
-			for (Item item : equipment.getItems())
-			{
-				if (item != null && item.getId() == KODAI_WAND_ID)
-				{
-					log.debug("Kodai wand found in equipment");
-					return true;
-				}
-			}
-		}
-
-		log.debug("Kodai wand NOT found");
-		return false;
+		return covered;
 	}
 
 	public boolean hasChugJug()
@@ -294,6 +343,8 @@ public class PlayerStateValidator
 	 * that cover that type. This matches OSRS behaviour, where the game validates each
 	 * rune type independently — a single Steam rune counts toward both the Fire check
 	 * and the Water check without being "spent" between the two.
+	 * Runes covered by an infinite rune source (staff, charged tome, Kodai wand) are
+	 * treated as satisfied regardless of quantity.
 	 *
 	 * @param requiredRunes Map of rune ID to required quantity
 	 * @param spellName Name of the spell for logging purposes
@@ -302,11 +353,19 @@ public class PlayerStateValidator
 	private boolean hasRequiredRunesWithSubstitution(Map<Integer, Integer> requiredRunes, String spellName)
 	{
 		Map<Integer, Integer> totalRunes = getTotalRuneCounts();
+		Set<Integer> infiniteRunes = getInfiniteRuneSources();
 
 		for (Map.Entry<Integer, Integer> entry : requiredRunes.entrySet())
 		{
 			int runeId = entry.getKey();
 			int required = entry.getValue();
+
+			if (infiniteRunes.contains(runeId))
+			{
+				log.debug("  Rune {} - covered by an infinite rune source", runeId);
+				continue;
+			}
+
 			int available = totalRunes.getOrDefault(runeId, 0);
 
 			for (CombinationRune combinationRune : CombinationRune.getSubstitutesForRune(runeId))
@@ -336,7 +395,6 @@ public class PlayerStateValidator
 	public boolean hasBookOfTheDead()
 	{
 		final int BOOK_OF_THE_DEAD_ID = 25818;
-		final int EQUIPMENT_CONTAINER_ID = 94;
 
 		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
 		if (inventory != null)
@@ -351,7 +409,7 @@ public class PlayerStateValidator
 			}
 		}
 
-		ItemContainer equipment = client.getItemContainer(EQUIPMENT_CONTAINER_ID);
+		ItemContainer equipment = client.getItemContainer(InventoryID.WORN);
 		if (equipment != null)
 		{
 			for (Item item : equipment.getItems())

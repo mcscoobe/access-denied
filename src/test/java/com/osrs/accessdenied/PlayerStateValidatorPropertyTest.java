@@ -8,6 +8,7 @@ import net.runelite.api.EnumID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarbitID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -392,6 +393,142 @@ class PlayerStateValidatorPropertyTest
 		assertThat(result)
 			.as("With Earth:%d + Mud:%d (total:%d), expected:%s", earthRunes, mudRunes, totalEarthEquivalent, shouldPass)
 			.isEqualTo(shouldPass);
+	}
+
+	// -----------------------------------------------------------------------
+	// Infinite rune sources — staves, charged tomes, Kodai wand
+	// -----------------------------------------------------------------------
+
+	/**
+	 * A fire staff in the inventory satisfies the Thralls fire-rune requirement
+	 * even with zero Fire runes carried.
+	 */
+	@Property
+	void fireStaffSatisfiesThrallsFireRequirement()
+	{
+		Item[] items = new Item[]{
+			createItem(ItemID.FIRE_BATTLESTAFF, 1),
+			createItem(BLOOD_RUNE_ID, 5),
+			createItem(COSMIC_RUNE_ID, 1),
+			createItem(BOOK_OF_THE_DEAD_ID, 1)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		assertThat(validator.hasResurrectGreaterGhostRunes())
+			.as("Fire battlestaff should cover the 10 Fire rune requirement for Thralls")
+			.isTrue();
+	}
+
+	/**
+	 * A charged Tome of Water satisfies the Ice Barrage water-rune requirement;
+	 * the uncharged tome does not.
+	 */
+	@Property
+	void tomeOfWaterSatisfiesIceBarrageWaterRequirement()
+	{
+		Item[] withChargedTome = new Item[]{
+			createItem(ItemID.TOME_OF_WATER, 1),
+			createItem(DEATH_RUNE_ID, 2),
+			createItem(BLOOD_RUNE_ID, 4)
+		};
+		assertThat(createValidator(withChargedTome).hasIceBarrageRunes())
+			.as("Charged Tome of Water should cover the Water rune requirement")
+			.isTrue();
+
+		Item[] withUnchargedTome = new Item[]{
+			createItem(ItemID.TOME_OF_WATER_UNCHARGED, 1),
+			createItem(DEATH_RUNE_ID, 2),
+			createItem(BLOOD_RUNE_ID, 4)
+		};
+		assertThat(createValidator(withUnchargedTome).hasIceBarrageRunes())
+			.as("Uncharged Tome of Water should NOT cover the Water rune requirement")
+			.isFalse();
+	}
+
+	/**
+	 * Regression: the Kodai wand still provides infinite water runes for Ice Barrage
+	 * after the special case was folded into the generic infinite-rune handling.
+	 */
+	@Property
+	void kodaiWandStillSatisfiesIceBarrageWaterRequirement()
+	{
+		Item[] items = new Item[]{
+			createItem(ItemID.KODAI_WAND, 1),
+			createItem(DEATH_RUNE_ID, 2),
+			createItem(BLOOD_RUNE_ID, 4)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		assertThat(validator.hasIceBarrageRunes())
+			.as("Kodai wand should cover the Water rune requirement for Ice Barrage")
+			.isTrue();
+	}
+
+	/**
+	 * A combination staff covers both of its elements: Steam battlestaff
+	 * satisfies the Fire and Water requirements of Humidify.
+	 */
+	@Property
+	void steamStaffCoversFireAndWaterForHumidify()
+	{
+		Item[] items = new Item[]{
+			createItem(ItemID.STEAM_BATTLESTAFF, 1),
+			createItem(ASTRAL_RUNE_ID, 1)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		assertThat(validator.hasHumidifyRunes())
+			.as("Steam battlestaff should cover Fire and Water requirements for Humidify")
+			.isTrue();
+	}
+
+	/**
+	 * An infinite rune source only covers its own runes — a water staff does not
+	 * excuse the missing Death and Blood runes for Ice Barrage.
+	 */
+	@Property
+	void waterStaffDoesNotCoverNonElementalRunes()
+	{
+		Item[] items = new Item[]{
+			createItem(ItemID.WATER_BATTLESTAFF, 1)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		assertThat(validator.hasIceBarrageRunes())
+			.as("Water battlestaff alone should not satisfy Death/Blood requirements")
+			.isFalse();
+	}
+
+	/**
+	 * An equipped (worn) staff counts as an infinite rune source, matching the
+	 * previous Kodai wand behaviour.
+	 */
+	@Property
+	void equippedStaffCountsAsInfiniteRuneSource()
+	{
+		Client client = mock(Client.class);
+		ItemContainer inventory = mock(ItemContainer.class);
+		ItemContainer equipment = mock(ItemContainer.class);
+
+		Item[] inventoryItems = new Item[]{
+			createItem(BLOOD_RUNE_ID, 5),
+			createItem(COSMIC_RUNE_ID, 1),
+			createItem(BOOK_OF_THE_DEAD_ID, 1)
+		};
+		Item[] equipmentItems = new Item[]{
+			createItem(ItemID.MYSTIC_FIRE_STAFF, 1)
+		};
+
+		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
+		when(client.getItemContainer(InventoryID.WORN)).thenReturn(equipment);
+		when(inventory.getItems()).thenReturn(inventoryItems);
+		when(equipment.getItems()).thenReturn(equipmentItems);
+
+		PlayerStateValidator validator = new PlayerStateValidator(client);
+
+		assertThat(validator.hasResurrectGreaterGhostRunes())
+			.as("Equipped mystic fire staff should cover the Fire rune requirement for Thralls")
+			.isTrue();
 	}
 
 	// -----------------------------------------------------------------------

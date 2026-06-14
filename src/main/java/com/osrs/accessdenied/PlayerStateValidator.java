@@ -57,7 +57,6 @@ public class PlayerStateValidator
 		sources.put(ItemID.KODAI_WAND, water);
 		sources.put(ItemID.TOME_OF_FIRE, fire);
 		sources.put(ItemID.TOME_OF_WATER, water);
-		sources.put(ItemID.TWINFLAME_STAFF, steam); // covers fire and water
 
 		sources.put(ItemID.STAFF_OF_AIR, air);
 		sources.put(ItemID.AIR_BATTLESTAFF, air);

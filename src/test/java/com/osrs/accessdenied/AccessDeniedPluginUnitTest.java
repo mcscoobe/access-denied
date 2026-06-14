@@ -331,9 +331,10 @@ public class AccessDeniedPluginUnitTest
 	}
 
 	@Test
-	public void testOnConfigChangedBlocksConflictingCoxLunarToggle()
+	public void testOnConfigChangedDisablesConflictingArceuusWhenLunarEnabled()
 	{
-		// Arceuus spell already required — enabling a Lunar spell must be reverted
+		// Arceuus spell already required — enabling a Lunar spell turns the Arceuus one off,
+		// keeping the just-enabled Lunar toggle.
 		when(config.coxRequireSpell()).thenReturn(true);
 		when(config.coxRequireDeathCharge()).thenReturn(false);
 
@@ -344,7 +345,9 @@ public class AccessDeniedPluginUnitTest
 
 		plugin.onConfigChanged(event);
 
-		verify(configManager).setConfiguration("accessdenied", "coxRequireHumidify", false);
+		// The conflicting Arceuus toggle is switched off; the new Lunar toggle is left alone.
+		verify(configManager).setConfiguration("accessdenied", "coxRequireSpell", false);
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxRequireHumidify"), any());
 
 		ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
 		verify(client).addChatMessage(
@@ -355,14 +358,34 @@ public class AccessDeniedPluginUnitTest
 		);
 
 		String message = messageCaptor.getValue();
-		assertTrue(message.contains("conflicting spellbook"));
 		assertTrue(message.contains("Chambers of Xeric"));
+		assertTrue(message.contains("Thralls"));   // the disabled Arceuus spell
+		assertTrue(message.contains("Humidify"));  // the spell that was just enabled
 	}
 
 	@Test
-	public void testOnConfigChangedBlocksConflictingCoxArceuusToggle()
+	public void testOnConfigChangedDisablesBothConflictingArceuusSpells()
 	{
-		// Lunar spell already required — enabling an Arceuus spell must be reverted
+		// Both Arceuus spells on — enabling a Lunar spell switches off both of them.
+		when(config.coxRequireSpell()).thenReturn(true);
+		when(config.coxRequireDeathCharge()).thenReturn(true);
+
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("coxRequireVengeance");
+		when(event.getNewValue()).thenReturn("true");
+
+		plugin.onConfigChanged(event);
+
+		verify(configManager).setConfiguration("accessdenied", "coxRequireSpell", false);
+		verify(configManager).setConfiguration("accessdenied", "coxRequireDeathCharge", false);
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxRequireVengeance"), any());
+	}
+
+	@Test
+	public void testOnConfigChangedDisablesConflictingLunarWhenArceuusEnabled()
+	{
+		// Lunar spell already required — enabling an Arceuus spell turns the Lunar one off.
 		when(config.coxRequireHumidify()).thenReturn(false);
 		when(config.coxRequireVengeance()).thenReturn(true);
 
@@ -373,7 +396,8 @@ public class AccessDeniedPluginUnitTest
 
 		plugin.onConfigChanged(event);
 
-		verify(configManager).setConfiguration("accessdenied", "coxRequireSpell", false);
+		verify(configManager).setConfiguration("accessdenied", "coxRequireVengeance", false);
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxRequireSpell"), any());
 	}
 
 	@Test

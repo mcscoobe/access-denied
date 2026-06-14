@@ -188,7 +188,7 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		if (blockConflictingCoxSpellbookToggle(event))
+		if (resolveConflictingCoxSpellbookToggle(event))
 		{
 			return;
 		}
@@ -224,6 +224,10 @@ public class AccessDeniedPlugin extends Plugin
 			{
 				// The first menu open can happen before the first game tick has validated;
 				// compute on demand so right-clicking immediately on arrival is still protected.
+				// When validation isn't required, lastResult stays null and this cheap
+				// isValidationRequired check simply re-runs per event — onGameTick owns the
+				// cache lifecycle (it nulls lastResult every tick when validation is off), so
+				// there is no cache to populate here.
 				if (lastResult == null && isValidationRequired(currentLocation))
 				{
 					lastResult = validateLocationRequirements(currentLocation);
@@ -390,16 +394,16 @@ public class AccessDeniedPlugin extends Plugin
 	}
 
 	/**
-	 * Prevent the CoX config from requiring spells on two spellbooks at once.
-	 * Thralls/Death Charge need Arceuus while Humidify/Vengeance need Lunar, so requiring
-	 * both groups can never be satisfied. When a CoX spell toggle is turned on while the
-	 * opposite group already has a toggle enabled, the new toggle is reset to off and the
-	 * player is told why. The reset re-fires onConfigChanged with {@code false}, which
-	 * passes through harmlessly.
+	 * Keep the CoX config on a single spellbook. Thralls/Death Charge need Arceuus while
+	 * Humidify/Vengeance need Lunar, so requiring spells from both groups can never be
+	 * satisfied. When a CoX spell toggle is turned on while the opposite group has toggles
+	 * enabled, the just-enabled toggle wins: every enabled toggle in the opposite group is
+	 * switched off and the player is told which ones. Each switch-off re-fires
+	 * onConfigChanged with {@code false}, which passes through harmlessly.
 	 *
-	 * @return true if the change was blocked and reverted
+	 * @return true if a conflicting opposite-group toggle was switched off
 	 */
-	private boolean blockConflictingCoxSpellbookToggle(ConfigChanged event)
+	private boolean resolveConflictingCoxSpellbookToggle(ConfigChanged event)
 	{
 		String key = event.getKey();
 		boolean arceuusKey = "coxRequireSpell".equals(key) || "coxRequireDeathCharge".equals(key);
@@ -410,22 +414,56 @@ public class AccessDeniedPlugin extends Plugin
 			return false;
 		}
 
-		boolean oppositeGroupEnabled = arceuusKey
-			? config.coxRequireHumidify() || config.coxRequireVengeance()
-			: config.coxRequireSpell() || config.coxRequireDeathCharge();
+		String[] oppositeKeys = arceuusKey
+			? new String[]{"coxRequireHumidify", "coxRequireVengeance"}
+			: new String[]{"coxRequireSpell", "coxRequireDeathCharge"};
+		boolean[] oppositeEnabled = arceuusKey
+			? new boolean[]{config.coxRequireHumidify(), config.coxRequireVengeance()}
+			: new boolean[]{config.coxRequireSpell(), config.coxRequireDeathCharge()};
 
-		if (!oppositeGroupEnabled)
+		StringBuilder disabledNames = new StringBuilder();
+		for (int i = 0; i < oppositeKeys.length; i++)
+		{
+			if (oppositeEnabled[i])
+			{
+				configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, oppositeKeys[i], false);
+				if (disabledNames.length() > 0)
+				{
+					disabledNames.append(", ");
+				}
+				disabledNames.append(coxSpellName(oppositeKeys[i]));
+			}
+		}
+
+		if (disabledNames.length() == 0)
 		{
 			return false;
 		}
 
-		configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, key, false);
+		String oppositeBook = arceuusKey ? "Lunar" : "Arceuus";
 		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-			"<col=ff0000>Chambers of Xeric has conflicting spellbook requirements. " +
-			"Arceuus spells (Thralls/Death Charge) and Lunar spells (Humidify/Vengeance) cannot both be required — " +
-			"the toggle you just enabled has been turned back off.</col>",
+			"<col=ff0000>Chambers of Xeric can only require one spellbook. Enabling "
+			+ coxSpellName(key) + " disabled the conflicting " + oppositeBook + " spell(s): "
+			+ disabledNames + ".</col>",
 			null);
 		return true;
+	}
+
+	private static String coxSpellName(String key)
+	{
+		switch (key)
+		{
+			case "coxRequireSpell":
+				return "Thralls";
+			case "coxRequireDeathCharge":
+				return "Death Charge";
+			case "coxRequireHumidify":
+				return "Humidify";
+			case "coxRequireVengeance":
+				return "Vengeance";
+			default:
+				return key;
+		}
 	}
 
 	private void validateConfiguration(String configKey)

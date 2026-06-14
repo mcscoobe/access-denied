@@ -32,6 +32,7 @@ class PlayerStateValidatorPropertyTest
 	private static final int ASTRAL_RUNE_ID = 9075;
 	private static final int AETHER_RUNE_ID = 30843;
 	private static final int BOOK_OF_THE_DEAD_ID = 25818;
+	private static final int RUNE_POUCH_ID = 12791;
 
 	/**
 	 * Helper to create a validator with mocked client and inventory.
@@ -403,7 +404,7 @@ class PlayerStateValidatorPropertyTest
 	 * A fire staff in the inventory satisfies the Thralls fire-rune requirement
 	 * even with zero Fire runes carried.
 	 */
-	@Property
+	@Example
 	void fireStaffSatisfiesThrallsFireRequirement()
 	{
 		Item[] items = new Item[]{
@@ -423,7 +424,7 @@ class PlayerStateValidatorPropertyTest
 	 * A charged Tome of Water satisfies the Ice Barrage water-rune requirement;
 	 * the uncharged tome does not.
 	 */
-	@Property
+	@Example
 	void tomeOfWaterSatisfiesIceBarrageWaterRequirement()
 	{
 		Item[] withChargedTome = new Item[]{
@@ -449,7 +450,7 @@ class PlayerStateValidatorPropertyTest
 	 * Regression: the Kodai wand still provides infinite water runes for Ice Barrage
 	 * after the special case was folded into the generic infinite-rune handling.
 	 */
-	@Property
+	@Example
 	void kodaiWandStillSatisfiesIceBarrageWaterRequirement()
 	{
 		Item[] items = new Item[]{
@@ -468,7 +469,7 @@ class PlayerStateValidatorPropertyTest
 	 * A combination staff covers both of its elements: Steam battlestaff
 	 * satisfies the Fire and Water requirements of Humidify.
 	 */
-	@Property
+	@Example
 	void steamStaffCoversFireAndWaterForHumidify()
 	{
 		Item[] items = new Item[]{
@@ -486,7 +487,7 @@ class PlayerStateValidatorPropertyTest
 	 * An infinite rune source only covers its own runes — a water staff does not
 	 * excuse the missing Death and Blood runes for Ice Barrage.
 	 */
-	@Property
+	@Example
 	void waterStaffDoesNotCoverNonElementalRunes()
 	{
 		Item[] items = new Item[]{
@@ -503,7 +504,7 @@ class PlayerStateValidatorPropertyTest
 	 * An equipped (worn) staff counts as an infinite rune source, matching the
 	 * previous Kodai wand behaviour.
 	 */
-	@Property
+	@Example
 	void equippedStaffCountsAsInfiniteRuneSource()
 	{
 		Client client = mock(Client.class);
@@ -529,6 +530,205 @@ class PlayerStateValidatorPropertyTest
 		assertThat(validator.hasResurrectGreaterGhostRunes())
 			.as("Equipped mystic fire staff should cover the Fire rune requirement for Thralls")
 			.isTrue();
+	}
+
+	/**
+	 * Symmetry with the Tome of Water case: an uncharged Tome of Fire provides nothing
+	 * and must not satisfy the Thralls fire requirement.
+	 */
+	@Example
+	void unchargedTomeOfFireDoesNotSatisfyThrallsFireRequirement()
+	{
+		Item[] items = new Item[]{
+			createItem(ItemID.TOME_OF_FIRE_UNCHARGED, 1),
+			createItem(BLOOD_RUNE_ID, 5),
+			createItem(COSMIC_RUNE_ID, 1),
+			createItem(BOOK_OF_THE_DEAD_ID, 1)
+		};
+		assertThat(createValidator(items).hasResurrectGreaterGhostRunes())
+			.as("Uncharged Tome of Fire should NOT cover the Fire rune requirement")
+			.isFalse();
+	}
+
+	// -----------------------------------------------------------------------
+	// Blood Barrage — Blood x4, Soul x1, Death x4
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Property: Having at least the required runes should pass Blood Barrage validation.
+	 */
+	@Property
+	void bloodBarrageWithExactRunesShouldPass(
+		@ForAll @IntRange(min = 4, max = 100) int bloodRunes,
+		@ForAll @IntRange(min = 1, max = 100) int soulRunes,
+		@ForAll @IntRange(min = 4, max = 100) int deathRunes
+	)
+	{
+		Item[] items = new Item[]{
+			createItem(BLOOD_RUNE_ID, bloodRunes),
+			createItem(SOUL_RUNE_ID, soulRunes),
+			createItem(DEATH_RUNE_ID, deathRunes)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		assertThat(validator.hasBloodBarrageRunes())
+			.as("Should pass with Blood:%d, Soul:%d, Death:%d", bloodRunes, soulRunes, deathRunes)
+			.isTrue();
+	}
+
+	/**
+	 * Regression guard for review fix #5: Blood Barrage requires 4 Death runes
+	 * (previously documented as 1), so three Death runes must fail.
+	 */
+	@Example
+	void bloodBarrageWithThreeDeathRunesShouldFail()
+	{
+		Item[] items = new Item[]{
+			createItem(BLOOD_RUNE_ID, 4),
+			createItem(SOUL_RUNE_ID, 1),
+			createItem(DEATH_RUNE_ID, 3)
+		};
+		assertThat(createValidator(items).hasBloodBarrageRunes())
+			.as("Blood Barrage should require 4 Death runes, so 3 must fail")
+			.isFalse();
+	}
+
+	/**
+	 * Property: Aether runes can substitute for the Soul rune in Blood Barrage.
+	 */
+	@Property
+	void bloodBarrageWithAetherForSoulShouldPass(
+		@ForAll @IntRange(min = 1, max = 100) int aetherRunes
+	)
+	{
+		Item[] items = new Item[]{
+			createItem(BLOOD_RUNE_ID, 4),
+			createItem(DEATH_RUNE_ID, 4),
+			createItem(AETHER_RUNE_ID, aetherRunes)
+		};
+		PlayerStateValidator validator = createValidator(items);
+
+		assertThat(validator.hasBloodBarrageRunes())
+			.as("Aether should substitute for Soul in Blood Barrage (Aether:%d)", aetherRunes)
+			.isTrue();
+	}
+
+	// -----------------------------------------------------------------------
+	// Rune pouch — counting and stale-varbit guard
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Runes stored in the rune pouch contribute to requirement checks when the
+	 * pouch is physically present in the inventory.
+	 */
+	@Example
+	void runePouchRunesCountTowardRequirements()
+	{
+		Item[] inventory = new Item[]{
+			createItem(RUNE_POUCH_ID, 1),
+			createItem(BOOK_OF_THE_DEAD_ID, 1)
+		};
+		PlayerStateValidator validator = createValidatorWithRunePouch(
+			inventory,
+			new int[]{FIRE_RUNE_ID, BLOOD_RUNE_ID, COSMIC_RUNE_ID},
+			new int[]{10, 5, 1});
+
+		assertThat(validator.hasResurrectGreaterGhostRunes())
+			.as("Runes stored in the rune pouch should count toward Thralls")
+			.isTrue();
+	}
+
+	/**
+	 * Stale-varbit guard: pouch varbits must be ignored when no pouch item is in the
+	 * inventory (the varbits persist after the pouch is deposited).
+	 */
+	@Example
+	void runePouchIgnoredWhenPouchNotInInventory()
+	{
+		Item[] inventory = new Item[]{
+			createItem(BOOK_OF_THE_DEAD_ID, 1) // pouch item intentionally absent
+		};
+		PlayerStateValidator validator = createValidatorWithRunePouch(
+			inventory,
+			new int[]{FIRE_RUNE_ID, BLOOD_RUNE_ID, COSMIC_RUNE_ID},
+			new int[]{10, 5, 1});
+
+		assertThat(validator.hasResurrectGreaterGhostRunes())
+			.as("Rune pouch varbits must be ignored when no pouch is in the inventory")
+			.isFalse();
+	}
+
+	/**
+	 * All rune-pouch variants (regular and the divine variants) enable pouch reading.
+	 */
+	@Property
+	void divineRunePouchVariantsAreRecognized(
+		@ForAll("runePouchIds") int pouchId
+	)
+	{
+		Item[] inventory = new Item[]{
+			createItem(pouchId, 1),
+			createItem(BOOK_OF_THE_DEAD_ID, 1)
+		};
+		PlayerStateValidator validator = createValidatorWithRunePouch(
+			inventory,
+			new int[]{FIRE_RUNE_ID, BLOOD_RUNE_ID, COSMIC_RUNE_ID},
+			new int[]{10, 5, 1});
+
+		assertThat(validator.hasResurrectGreaterGhostRunes())
+			.as("Pouch variant %d should enable rune-pouch reading", pouchId)
+			.isTrue();
+	}
+
+	@Provide
+	Arbitrary<Integer> runePouchIds()
+	{
+		// Regular, Divine, Divine (old), Divine (locked)
+		return Arbitraries.of(12791, 27281, 27086, 27509);
+	}
+
+	// -----------------------------------------------------------------------
+	// Spellbook discrimination
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Exactly one spellbook predicate is true for each SPELLBOOK varbit value
+	 * (1 Ancient, 2 Lunar, 3 Arceuus), and none are true for the standard book (0).
+	 */
+	@Property
+	void spellbookPredicatesMatchVarbit(
+		@ForAll @IntRange(min = 0, max = 3) int spellbook
+	)
+	{
+		Client client = mock(Client.class);
+		when(client.getVarbitValue(VarbitID.SPELLBOOK)).thenReturn(spellbook);
+		PlayerStateValidator validator = new PlayerStateValidator(client);
+
+		assertThat(validator.isOnAncientSpellbook()).as("Ancient").isEqualTo(spellbook == 1);
+		assertThat(validator.isOnLunarSpellbook()).as("Lunar").isEqualTo(spellbook == 2);
+		assertThat(validator.isOnArceuusSpellbook()).as("Arceuus").isEqualTo(spellbook == 3);
+	}
+
+	// -----------------------------------------------------------------------
+	// Item presence checks
+	// -----------------------------------------------------------------------
+
+	@Example
+	void chugJugDetectedWhenPresentAndAbsent()
+	{
+		assertThat(createValidator(new Item[]{createItem(ItemID.MM_PREPOT_DEVICE, 1)}).hasChugJug())
+			.as("Chug Jug present").isTrue();
+		assertThat(createValidator(new Item[]{createItem(FIRE_RUNE_ID, 1)}).hasChugJug())
+			.as("Chug Jug absent").isFalse();
+	}
+
+	@Example
+	void saturatedHeartDetectedWhenPresentAndAbsent()
+	{
+		assertThat(createValidator(new Item[]{createItem(ItemID.SATURATED_HEART, 1)}).hasSaturatedHeart())
+			.as("Saturated Heart present").isTrue();
+		assertThat(createValidator(new Item[]{createItem(FIRE_RUNE_ID, 1)}).hasSaturatedHeart())
+			.as("Saturated Heart absent").isFalse();
 	}
 
 	// -----------------------------------------------------------------------
@@ -653,5 +853,51 @@ class PlayerStateValidatorPropertyTest
 	private Item createItem(int id, int quantity)
 	{
 		return new Item(id, quantity);
+	}
+
+	/**
+	 * Build a validator whose rune pouch holds the given runes. Slot i stores
+	 * {@code runeItemIds[i]} (mapped through the rune-pouch enum) with quantity
+	 * {@code amounts[i]}; remaining slots are empty. The caller controls whether a
+	 * pouch item is actually in {@code inventoryItems} to exercise the stale-varbit guard.
+	 */
+	private PlayerStateValidator createValidatorWithRunePouch(
+		Item[] inventoryItems, int[] runeItemIds, int[] amounts)
+	{
+		Client client = mock(Client.class);
+		ItemContainer inventory = mock(ItemContainer.class);
+		EnumComposition runepouchEnum = mock(EnumComposition.class);
+
+		when(client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
+		when(client.getEnum(EnumID.RUNEPOUCH_RUNE)).thenReturn(runepouchEnum);
+		when(client.getVarbitValue(VarbitID.SPELLBOOK)).thenReturn(3); // Arceuus
+		when(inventory.getItems()).thenReturn(inventoryItems);
+
+		int[] typeVarbits = {
+			VarbitID.RUNE_POUCH_TYPE_1, VarbitID.RUNE_POUCH_TYPE_2,
+			VarbitID.RUNE_POUCH_TYPE_3, VarbitID.RUNE_POUCH_TYPE_4
+		};
+		int[] amountVarbits = {
+			VarbitID.RUNE_POUCH_QUANTITY_1, VarbitID.RUNE_POUCH_QUANTITY_2,
+			VarbitID.RUNE_POUCH_QUANTITY_3, VarbitID.RUNE_POUCH_QUANTITY_4
+		};
+
+		for (int i = 0; i < 4; i++)
+		{
+			if (i < runeItemIds.length)
+			{
+				int enumKey = i + 1; // arbitrary non-zero enum key per slot
+				when(client.getVarbitValue(typeVarbits[i])).thenReturn(enumKey);
+				when(client.getVarbitValue(amountVarbits[i])).thenReturn(amounts[i]);
+				when(runepouchEnum.getIntValue(enumKey)).thenReturn(runeItemIds[i]);
+			}
+			else
+			{
+				when(client.getVarbitValue(typeVarbits[i])).thenReturn(0);
+				when(client.getVarbitValue(amountVarbits[i])).thenReturn(0);
+			}
+		}
+
+		return new PlayerStateValidator(client);
 	}
 }

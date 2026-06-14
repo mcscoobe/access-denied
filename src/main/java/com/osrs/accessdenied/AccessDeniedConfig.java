@@ -5,9 +5,11 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 
-@ConfigGroup("accessdenied")
+@ConfigGroup(AccessDeniedConfig.CONFIG_GROUP)
 public interface AccessDeniedConfig extends Config
 {
+	String CONFIG_GROUP = "accessdenied";
+
 	@ConfigSection(
 		name = "Nex",
 		description = "Configuration for Nex boss requirements",

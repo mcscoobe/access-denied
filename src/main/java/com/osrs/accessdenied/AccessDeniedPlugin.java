@@ -45,7 +45,6 @@ public class AccessDeniedPlugin extends Plugin
 	@Inject
 	private PlayerStateValidator playerStateValidator;
 
-	@SuppressWarnings("unused")
 	@Inject
 	private ConfigManager configManager;
 
@@ -184,7 +183,7 @@ public class AccessDeniedPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (!"accessdenied".equals(event.getGroup()))
+		if (!AccessDeniedConfig.CONFIG_GROUP.equals(event.getGroup()))
 		{
 			return;
 		}
@@ -420,7 +419,7 @@ public class AccessDeniedPlugin extends Plugin
 			return false;
 		}
 
-		configManager.setConfiguration("accessdenied", key, false);
+		configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, key, false);
 		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
 			"<col=ff0000>Chambers of Xeric has conflicting spellbook requirements. " +
 			"Arceuus spells (Thralls/Death Charge) and Lunar spells (Humidify/Vengeance) cannot both be required — " +

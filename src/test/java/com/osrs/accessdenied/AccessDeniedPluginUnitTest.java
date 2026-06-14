@@ -5,6 +5,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Menu;
 import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
 import net.runelite.api.WorldView;
 import net.runelite.api.events.GameStateChanged;
@@ -435,6 +436,83 @@ public class AccessDeniedPluginUnitTest
 		// Should not modify menu
 		verify(menu, never()).getMenuEntries();
 
+	}
+
+	@Test
+	public void testOnMenuEntryAddedValidatesOnDemandAndReordersWhenInvalid() throws Exception
+	{
+		// At a validated object on the arrival tick, lastResult is still null — the handler
+		// must validate on demand and, finding the state invalid, reorder the menu.
+		setField(plugin, "currentLocation", BossLocations.NEX);
+		setField(plugin, "lastResult", null);
+
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexRequireSpell()).thenReturn(true);
+		// validator mock returns false by default, so validation is invalid
+
+		MenuEntry walkEntry = mock(MenuEntry.class);
+		when(walkEntry.getType()).thenReturn(MenuAction.WALK);
+		MenuEntry objectEntry = mock(MenuEntry.class);
+		when(objectEntry.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{walkEntry, objectEntry});
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		ValidationResult cached = getField(plugin, "lastResult");
+		assertNotNull("on-demand validation should cache a result", cached);
+		assertFalse("cached result should be invalid", cached.isValid());
+		verify(menu).setMenuEntries(any());
+	}
+
+	@Test
+	public void testOnMenuEntryAddedOnDemandDoesNotReorderWhenValid() throws Exception
+	{
+		setField(plugin, "currentLocation", BossLocations.NEX);
+		setField(plugin, "lastResult", null);
+
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexRequireSpell()).thenReturn(true);
+		// Make the on-demand validation pass
+		when(validator.hasResurrectGreaterGhostRunes()).thenReturn(true);
+		when(validator.hasBookOfTheDead()).thenReturn(true);
+		when(validator.isOnArceuusSpellbook()).thenReturn(true);
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		ValidationResult cached = getField(plugin, "lastResult");
+		assertNotNull("on-demand validation should cache a result", cached);
+		assertTrue("cached result should be valid", cached.isValid());
+		verify(menu, never()).setMenuEntries(any());
+	}
+
+	@Test
+	public void testOnMenuEntryAddedSkipsOnDemandDuringActiveCoxRaid() throws Exception
+	{
+		// An active CoX raid short-circuits the on-demand block entirely.
+		setField(plugin, "currentLocation", BossLocations.NEX);
+		setField(plugin, "lastResult", null);
+		setField(plugin, "coxRaidActive", true);
+
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexRequireSpell()).thenReturn(true);
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		assertNull("no validation should occur during an active raid", getField(plugin, "lastResult"));
+		verify(validator, never()).hasResurrectGreaterGhostRunes();
+		verify(menu, never()).setMenuEntries(any());
 	}
 
 	// Helper methods for reflection

@@ -42,21 +42,23 @@ public class PlayerStateValidator
 
 	private static Map<Integer, int[]> buildInfiniteRuneSources()
 	{
-		final int[] air = {556};
-		final int[] water = {555};
-		final int[] earth = {557};
-		final int[] fire = {554};
-		final int[] lava = {554, 557};
-		final int[] mud = {555, 557};
-		final int[] steam = {555, 554};
-		final int[] smoke = {556, 554};
-		final int[] mist = {556, 555};
-		final int[] dust = {556, 557};
+		final int[] air = {ItemID.AIRRUNE};
+		final int[] water = {ItemID.WATERRUNE};
+		final int[] earth = {ItemID.EARTHRUNE};
+		final int[] fire = {ItemID.FIRERUNE};
+		final int[] lava = {ItemID.FIRERUNE, ItemID.EARTHRUNE};
+		final int[] mud = {ItemID.WATERRUNE, ItemID.EARTHRUNE};
+		final int[] steam = {ItemID.WATERRUNE, ItemID.FIRERUNE};
+		final int[] smoke = {ItemID.AIRRUNE, ItemID.FIRERUNE};
+		final int[] mist = {ItemID.AIRRUNE, ItemID.WATERRUNE};
+		final int[] dust = {ItemID.AIRRUNE, ItemID.EARTHRUNE};
 
 		Map<Integer, int[]> sources = new HashMap<>();
 		sources.put(ItemID.KODAI_WAND, water);
 		sources.put(ItemID.TOME_OF_FIRE, fire);
 		sources.put(ItemID.TOME_OF_WATER, water);
+		sources.put(ItemID.TWINFLAME_STAFF, steam); // covers fire and water
+
 		sources.put(ItemID.STAFF_OF_AIR, air);
 		sources.put(ItemID.AIR_BATTLESTAFF, air);
 		sources.put(ItemID.MYSTIC_AIR_STAFF, air);
@@ -149,9 +151,9 @@ public class PlayerStateValidator
 	{
 		// Required runes for Thralls
 		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(554, 10); // Fire rune
-		requiredRunes.put(565, 5);  // Blood rune
-		requiredRunes.put(564, 1);  // Cosmic rune
+		requiredRunes.put(ItemID.FIRERUNE, 10);  // Fire rune
+		requiredRunes.put(ItemID.BLOODRUNE, 5); // Blood rune
+		requiredRunes.put(ItemID.COSMICRUNE, 1); // Cosmic rune
 
 		log.debug("Checking Thralls runes:");
 		log.debug("  Required: Fire x10, Blood x5, Cosmic x1");
@@ -170,9 +172,9 @@ public class PlayerStateValidator
 	{
 		// Required runes for Death Charge
 		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(560, 1);  // Death rune
-		requiredRunes.put(565, 1);  // Blood rune
-		requiredRunes.put(566, 1);  // Soul rune
+		requiredRunes.put(ItemID.DEATHRUNE, 1); // Death rune
+		requiredRunes.put(ItemID.BLOODRUNE, 1); // Blood rune
+		requiredRunes.put(ItemID.SOULRUNE, 1);  // Soul rune
 
 		log.debug("Checking Death Charge runes:");
 		log.debug("  Required: Death x1, Blood x1, Soul x1");
@@ -190,9 +192,9 @@ public class PlayerStateValidator
 	public boolean hasHumidifyRunes()
 	{
 		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(9075, 1); // Astral rune
-		requiredRunes.put(554, 1);  // Fire rune
-		requiredRunes.put(555, 1);  // Water rune
+		requiredRunes.put(ItemID.ASTRALRUNE, 1); // Astral rune
+		requiredRunes.put(ItemID.FIRERUNE, 1);   // Fire rune
+		requiredRunes.put(ItemID.WATERRUNE, 1);  // Water rune
 
 		log.debug("Checking Humidify runes:");
 		log.debug("  Required: Astral x1, Fire x1, Water x1");
@@ -210,9 +212,9 @@ public class PlayerStateValidator
 	public boolean hasVengeanceRunes()
 	{
 		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(557, 10);  // Earth rune
-		requiredRunes.put(9075, 4);  // Astral rune
-		requiredRunes.put(560, 2);   // Death rune
+		requiredRunes.put(ItemID.EARTHRUNE, 10); // Earth rune
+		requiredRunes.put(ItemID.ASTRALRUNE, 4); // Astral rune
+		requiredRunes.put(ItemID.DEATHRUNE, 2);  // Death rune
 
 		log.debug("Checking Vengeance runes:");
 		log.debug("  Required: Earth x10, Astral x4, Death x2");
@@ -232,9 +234,9 @@ public class PlayerStateValidator
 	{
 		// Required runes for Ice Barrage
 		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(555, 6);  // Water rune
-		requiredRunes.put(560, 2);  // Death rune
-		requiredRunes.put(565, 4);  // Blood rune
+		requiredRunes.put(ItemID.WATERRUNE, 6); // Water rune
+		requiredRunes.put(ItemID.DEATHRUNE, 2); // Death rune
+		requiredRunes.put(ItemID.BLOODRUNE, 4); // Blood rune
 
 		log.debug("Checking Ice Barrage runes:");
 		log.debug("  Required: Water x6, Death x2, Blood x4");
@@ -253,9 +255,9 @@ public class PlayerStateValidator
 	{
 		// Required runes for Blood Barrage
 		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(565, 4);  // Blood rune
-		requiredRunes.put(566, 1);  // Soul rune
-		requiredRunes.put(560, 4);  // Death rune
+		requiredRunes.put(ItemID.BLOODRUNE, 4); // Blood rune
+		requiredRunes.put(ItemID.SOULRUNE, 1);  // Soul rune
+		requiredRunes.put(ItemID.DEATHRUNE, 4); // Death rune
 
 		log.debug("Checking Blood Barrage runes:");
 		log.debug("  Required: Blood x4, Soul x1, Death x4");
@@ -394,7 +396,7 @@ public class PlayerStateValidator
 	 */
 	public boolean hasBookOfTheDead()
 	{
-		final int BOOK_OF_THE_DEAD_ID = 25818;
+		final int BOOK_OF_THE_DEAD_ID = ItemID.BOOK_OF_THE_DEAD;
 
 		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
 		if (inventory != null)

@@ -10,7 +10,6 @@ import net.runelite.api.Player;
 import net.runelite.api.WorldView;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.MenuEntryAdded;
-import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import org.junit.After;
 import org.junit.Before;
@@ -41,9 +40,6 @@ public class AccessDeniedPluginUnitTest
 	private PlayerStateValidator validator;
 
 	@Mock
-	private ConfigManager configManager;
-
-	@Mock
 	private Player player;
 
 	@Mock
@@ -71,7 +67,6 @@ public class AccessDeniedPluginUnitTest
 		setField(plugin, "client", client);
 		setField(plugin, "config", config);
 		setField(plugin, "playerStateValidator", validator);
-		setField(plugin, "configManager", configManager);
 
 		// Setup default mocks
 		when(client.getLocalPlayer()).thenReturn(player);
@@ -286,10 +281,7 @@ public class AccessDeniedPluginUnitTest
 	public void testIsValidationRequiredWithCoxHumidify() throws Exception
 	{
 		when(config.coxEnabled()).thenReturn(true);
-		when(config.coxRequireSpell()).thenReturn(false);
-		when(config.coxRequireDeathCharge()).thenReturn(false);
-		when(config.coxRequireHumidify()).thenReturn(true);
-		when(config.coxRequireVengeance()).thenReturn(false);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.HUMIDIFY);
 
 		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
 		isValidationRequired.setAccessible(true);
@@ -302,10 +294,7 @@ public class AccessDeniedPluginUnitTest
 	public void testIsValidationRequiredWithCoxVengeance() throws Exception
 	{
 		when(config.coxEnabled()).thenReturn(true);
-		when(config.coxRequireSpell()).thenReturn(false);
-		when(config.coxRequireDeathCharge()).thenReturn(false);
-		when(config.coxRequireHumidify()).thenReturn(false);
-		when(config.coxRequireVengeance()).thenReturn(true);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.VENGEANCE);
 
 		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
 		isValidationRequired.setAccessible(true);
@@ -318,10 +307,7 @@ public class AccessDeniedPluginUnitTest
 	public void testIsValidationRequiredWithCoxNoRequirements() throws Exception
 	{
 		when(config.coxEnabled()).thenReturn(true);
-		when(config.coxRequireSpell()).thenReturn(false);
-		when(config.coxRequireDeathCharge()).thenReturn(false);
-		when(config.coxRequireHumidify()).thenReturn(false);
-		when(config.coxRequireVengeance()).thenReturn(false);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.NONE);
 
 		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
 		isValidationRequired.setAccessible(true);
@@ -331,107 +317,77 @@ public class AccessDeniedPluginUnitTest
 	}
 
 	@Test
-	public void testOnConfigChangedDisablesConflictingArceuusWhenLunarEnabled()
+	public void testCoxValidationPassesForArceuusComboWhenSatisfied() throws Exception
 	{
-		// Arceuus spell already required — enabling a Lunar spell turns the Arceuus one off,
-		// keeping the just-enabled Lunar toggle.
-		when(config.coxRequireSpell()).thenReturn(true);
-		when(config.coxRequireDeathCharge()).thenReturn(false);
+		// THRALLS_AND_DEATH_CHARGE requires both Arceuus spells plus the Arceuus spellbook.
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.THRALLS_AND_DEATH_CHARGE);
+		when(validator.hasResurrectGreaterGhostRunes()).thenReturn(true);
+		when(validator.hasBookOfTheDead()).thenReturn(true);
+		when(validator.hasDeathChargeRunes()).thenReturn(true);
+		when(validator.isOnArceuusSpellbook()).thenReturn(true);
 
-		ConfigChanged event = mock(ConfigChanged.class);
-		when(event.getGroup()).thenReturn("accessdenied");
-		when(event.getKey()).thenReturn("coxRequireHumidify");
-		when(event.getNewValue()).thenReturn("true");
+		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
 
-		plugin.onConfigChanged(event);
-
-		// The conflicting Arceuus toggle is switched off; the new Lunar toggle is left alone.
-		verify(configManager).setConfiguration("accessdenied", "coxRequireSpell", false);
-		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxRequireHumidify"), any());
-
-		ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
-		verify(client).addChatMessage(
-			eq(ChatMessageType.GAMEMESSAGE),
-			eq(""),
-			messageCaptor.capture(),
-			isNull()
-		);
-
-		String message = messageCaptor.getValue();
-		assertTrue(message.contains("Chambers of Xeric"));
-		assertTrue(message.contains("Thralls"));   // the disabled Arceuus spell
-		assertTrue(message.contains("Humidify"));  // the spell that was just enabled
+		assertTrue("Arceuus combo should pass when fully satisfied", result.isValid());
+		verify(validator).hasDeathChargeRunes();
+		verify(validator).isOnArceuusSpellbook();
+		// Lunar checks must not run for an Arceuus selection.
+		verify(validator, never()).hasHumidifyRunes();
+		verify(validator, never()).isOnLunarSpellbook();
 	}
 
 	@Test
-	public void testOnConfigChangedDisablesBothConflictingArceuusSpells()
+	public void testCoxValidationFailsWhenArceuusSpellbookMissing() throws Exception
 	{
-		// Both Arceuus spells on — enabling a Lunar spell switches off both of them.
-		when(config.coxRequireSpell()).thenReturn(true);
-		when(config.coxRequireDeathCharge()).thenReturn(true);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.THRALLS);
+		when(validator.hasResurrectGreaterGhostRunes()).thenReturn(true);
+		when(validator.hasBookOfTheDead()).thenReturn(true);
+		when(validator.isOnArceuusSpellbook()).thenReturn(false);
 
-		ConfigChanged event = mock(ConfigChanged.class);
-		when(event.getGroup()).thenReturn("accessdenied");
-		when(event.getKey()).thenReturn("coxRequireVengeance");
-		when(event.getNewValue()).thenReturn("true");
+		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
 
-		plugin.onConfigChanged(event);
-
-		verify(configManager).setConfiguration("accessdenied", "coxRequireSpell", false);
-		verify(configManager).setConfiguration("accessdenied", "coxRequireDeathCharge", false);
-		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxRequireVengeance"), any());
+		assertFalse("Should fail when not on the Arceuus spellbook", result.isValid());
 	}
 
 	@Test
-	public void testOnConfigChangedDisablesConflictingLunarWhenArceuusEnabled()
+	public void testCoxValidationChecksLunarPathForVengeance() throws Exception
 	{
-		// Lunar spell already required — enabling an Arceuus spell turns the Lunar one off.
-		when(config.coxRequireHumidify()).thenReturn(false);
-		when(config.coxRequireVengeance()).thenReturn(true);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.VENGEANCE);
+		when(validator.hasVengeanceRunes()).thenReturn(true);
+		when(validator.isOnLunarSpellbook()).thenReturn(true);
 
-		ConfigChanged event = mock(ConfigChanged.class);
-		when(event.getGroup()).thenReturn("accessdenied");
-		when(event.getKey()).thenReturn("coxRequireSpell");
-		when(event.getNewValue()).thenReturn("true");
+		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
 
-		plugin.onConfigChanged(event);
-
-		verify(configManager).setConfiguration("accessdenied", "coxRequireVengeance", false);
-		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxRequireSpell"), any());
+		assertTrue("Vengeance should pass when runes and Lunar spellbook are present", result.isValid());
+		verify(validator).hasVengeanceRunes();
+		verify(validator).isOnLunarSpellbook();
+		// Arceuus checks must not run for a Lunar selection.
+		verify(validator, never()).hasResurrectGreaterGhostRunes();
+		verify(validator, never()).isOnArceuusSpellbook();
 	}
 
 	@Test
-	public void testOnConfigChangedAllowsLunarToggleWhenNoArceuusEnabled()
+	public void testCoxValidationPassesWithNoneAndNoBans() throws Exception
 	{
-		when(config.coxRequireSpell()).thenReturn(false);
-		when(config.coxRequireDeathCharge()).thenReturn(false);
+		// NONE with no bans is satisfiable and must not query any spell requirements.
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.NONE);
 
-		ConfigChanged event = mock(ConfigChanged.class);
-		when(event.getGroup()).thenReturn("accessdenied");
-		when(event.getKey()).thenReturn("coxRequireHumidify");
-		when(event.getNewValue()).thenReturn("true");
+		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
 
-		plugin.onConfigChanged(event);
-
-		verify(configManager, never()).setConfiguration(anyString(), anyString(), any());
-		verify(client, never()).addChatMessage(any(), any(), any(), any());
+		assertTrue("NONE with no bans should be valid", result.isValid());
+		verify(validator, never()).hasResurrectGreaterGhostRunes();
+		verify(validator, never()).hasDeathChargeRunes();
+		verify(validator, never()).hasHumidifyRunes();
+		verify(validator, never()).hasVengeanceRunes();
+		verify(validator, never()).isOnArceuusSpellbook();
+		verify(validator, never()).isOnLunarSpellbook();
 	}
 
-	@Test
-	public void testOnConfigChangedAllowsDisablingToggleDespiteConflict()
+	private ValidationResult invokeValidateLocation(BossLocation location) throws Exception
 	{
-		// Turning a toggle OFF is never blocked, even when the opposite group is enabled
-		when(config.coxRequireSpell()).thenReturn(true);
-
-		ConfigChanged event = mock(ConfigChanged.class);
-		when(event.getGroup()).thenReturn("accessdenied");
-		when(event.getKey()).thenReturn("coxRequireHumidify");
-		when(event.getNewValue()).thenReturn("false");
-
-		plugin.onConfigChanged(event);
-
-		verify(configManager, never()).setConfiguration(anyString(), anyString(), any());
-		verify(client, never()).addChatMessage(any(), any(), any(), any());
+		Method validate = plugin.getClass().getDeclaredMethod("validateLocationRequirements", BossLocation.class);
+		validate.setAccessible(true);
+		return (ValidationResult) validate.invoke(plugin, location);
 	}
 
 	@Test

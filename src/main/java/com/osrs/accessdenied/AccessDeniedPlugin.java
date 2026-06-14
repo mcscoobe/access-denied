@@ -45,9 +45,6 @@ public class AccessDeniedPlugin extends Plugin
 	@Inject
 	private PlayerStateValidator playerStateValidator;
 
-	@Inject
-	private ConfigManager configManager;
-
 	private BossLocation currentLocation;
 	private int[] currentRegions;
 	private ValidationResult lastResult;
@@ -184,11 +181,6 @@ public class AccessDeniedPlugin extends Plugin
 	public void onConfigChanged(ConfigChanged event)
 	{
 		if (!AccessDeniedConfig.CONFIG_GROUP.equals(event.getGroup()))
-		{
-			return;
-		}
-
-		if (resolveConflictingCoxSpellbookToggle(event))
 		{
 			return;
 		}
@@ -393,79 +385,6 @@ public class AccessDeniedPlugin extends Plugin
 		client.getMenu().setMenuEntries(reordered);
 	}
 
-	/**
-	 * Keep the CoX config on a single spellbook. Thralls/Death Charge need Arceuus while
-	 * Humidify/Vengeance need Lunar, so requiring spells from both groups can never be
-	 * satisfied. When a CoX spell toggle is turned on while the opposite group has toggles
-	 * enabled, the just-enabled toggle wins: every enabled toggle in the opposite group is
-	 * switched off and the player is told which ones. Each switch-off re-fires
-	 * onConfigChanged with {@code false}, which passes through harmlessly.
-	 *
-	 * @return true if a conflicting opposite-group toggle was switched off
-	 */
-	private boolean resolveConflictingCoxSpellbookToggle(ConfigChanged event)
-	{
-		String key = event.getKey();
-		boolean arceuusKey = "coxRequireSpell".equals(key) || "coxRequireDeathCharge".equals(key);
-		boolean lunarKey = "coxRequireHumidify".equals(key) || "coxRequireVengeance".equals(key);
-
-		if ((!arceuusKey && !lunarKey) || !Boolean.parseBoolean(event.getNewValue()))
-		{
-			return false;
-		}
-
-		String[] oppositeKeys = arceuusKey
-			? new String[]{"coxRequireHumidify", "coxRequireVengeance"}
-			: new String[]{"coxRequireSpell", "coxRequireDeathCharge"};
-		boolean[] oppositeEnabled = arceuusKey
-			? new boolean[]{config.coxRequireHumidify(), config.coxRequireVengeance()}
-			: new boolean[]{config.coxRequireSpell(), config.coxRequireDeathCharge()};
-
-		StringBuilder disabledNames = new StringBuilder();
-		for (int i = 0; i < oppositeKeys.length; i++)
-		{
-			if (oppositeEnabled[i])
-			{
-				configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, oppositeKeys[i], false);
-				if (disabledNames.length() > 0)
-				{
-					disabledNames.append(", ");
-				}
-				disabledNames.append(coxSpellName(oppositeKeys[i]));
-			}
-		}
-
-		if (disabledNames.length() == 0)
-		{
-			return false;
-		}
-
-		String oppositeBook = arceuusKey ? "Lunar" : "Arceuus";
-		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-			"<col=ff0000>Chambers of Xeric can only require one spellbook. Enabling "
-			+ coxSpellName(key) + " disabled the conflicting " + oppositeBook + " spell(s): "
-			+ disabledNames + ".</col>",
-			null);
-		return true;
-	}
-
-	private static String coxSpellName(String key)
-	{
-		switch (key)
-		{
-			case "coxRequireSpell":
-				return "Thralls";
-			case "coxRequireDeathCharge":
-				return "Death Charge";
-			case "coxRequireHumidify":
-				return "Humidify";
-			case "coxRequireVengeance":
-				return "Vengeance";
-			default:
-				return key;
-		}
-	}
-
 	private void validateConfiguration(String configKey)
 	{
 		// No-requirements warning — fires only when a master Enabled toggle is turned on
@@ -498,8 +417,7 @@ public class AccessDeniedPlugin extends Plugin
 		else if ("coxEnabled".equals(configKey) && config.coxEnabled())
 		{
 			locationName = "Chambers of Xeric";
-			hasRequirements = config.coxRequireSpell() || config.coxRequireDeathCharge()
-				|| config.coxRequireHumidify() || config.coxRequireVengeance()
+			hasRequirements = config.coxSpellRequirement() != CoxSpellRequirement.NONE
 				|| config.coxBanChugJug() || config.coxBanSaturatedHeart();
 		}
 		else if ("infernoEnabled".equals(configKey) && config.infernoEnabled())
@@ -582,29 +500,29 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		java.util.List<String> missing = new java.util.ArrayList<>();
 
-		boolean requireArceuus = config.coxRequireSpell() || config.coxRequireDeathCharge();
-		if (requireArceuus)
+		CoxSpellRequirement spellRequirement = config.coxSpellRequirement();
+
+		if (spellRequirement.requiresArceuus())
 		{
-			if (config.coxRequireSpell())
+			if (spellRequirement.requiresThralls())
 			{
 				if (!playerStateValidator.hasResurrectGreaterGhostRunes()) { missing.add("runes for Thralls"); }
 				if (!playerStateValidator.hasBookOfTheDead()) { missing.add("Book of the Dead"); }
 			}
-			if (config.coxRequireDeathCharge())
+			if (spellRequirement.requiresDeathCharge())
 			{
 				if (!playerStateValidator.hasDeathChargeRunes()) { missing.add("runes for Death Charge"); }
 			}
 			if (!playerStateValidator.isOnArceuusSpellbook()) { missing.add("Arceuus spellbook"); }
 		}
 
-		boolean requireLunar = config.coxRequireHumidify() || config.coxRequireVengeance();
-		if (requireLunar)
+		if (spellRequirement.requiresLunar())
 		{
-			if (config.coxRequireHumidify())
+			if (spellRequirement.requiresHumidify())
 			{
 				if (!playerStateValidator.hasHumidifyRunes()) { missing.add("runes for Humidify"); }
 			}
-			if (config.coxRequireVengeance())
+			if (spellRequirement.requiresVengeance())
 			{
 				if (!playerStateValidator.hasVengeanceRunes()) { missing.add("runes for Vengeance"); }
 			}
@@ -687,8 +605,7 @@ public class AccessDeniedPlugin extends Plugin
 				return config.toaEnabled() && (config.toaRequireSpell() || config.toaRequireDeathCharge()
 					|| config.toaBanChugJug() || config.toaBanSaturatedHeart());
 			case "cox":
-				return config.coxEnabled() && (config.coxRequireSpell() || config.coxRequireDeathCharge()
-					|| config.coxRequireHumidify() || config.coxRequireVengeance()
+				return config.coxEnabled() && (config.coxSpellRequirement() != CoxSpellRequirement.NONE
 					|| config.coxBanChugJug() || config.coxBanSaturatedHeart());
 			case "inferno":
 				return config.infernoEnabled() && (config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage()

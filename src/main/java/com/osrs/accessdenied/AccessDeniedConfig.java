@@ -231,51 +231,19 @@ public interface AccessDeniedConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "coxRequireSpell",
-		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
+		keyName = "coxSpellRequirement",
+		name = "Required spell",
+		description = "Which spell to require at Chambers of Xeric. Thralls/Death Charge need the Arceuus spellbook; "
+			+ "Humidify/Vengeance need the Lunar spellbook. Only one spellbook can be required at a time, so the "
+			+ "choices are mutually exclusive. Thralls: 10 Fire, 5 Blood, 1 Cosmic rune + Book of the Dead. "
+			+ "Death Charge: 1 Death, 1 Blood, 1 Soul rune. Humidify: 1 Astral, 1 Fire, 1 Water rune. "
+			+ "Vengeance: 10 Earth, 4 Astral, 2 Death runes. Staves/tomes cover their element's rune; Aether substitutes for Soul/Cosmic.",
 		section = coxSection,
 		position = 1
 	)
-	default boolean coxRequireSpell()
+	default CoxSpellRequirement coxSpellRequirement()
 	{
-		return false;
-	}
-
-	@ConfigItem(
-		keyName = "coxRequireDeathCharge",
-		name = "Require Death Charge",
-		description = "Require the ability to cast Death Charge spell. Checks for: 1 Death rune, 1 Blood rune, 1 Soul rune, and Arceuus spellbook. Aether runes can substitute for Soul runes.",
-		section = coxSection,
-		position = 2
-	)
-	default boolean coxRequireDeathCharge()
-	{
-		return false;
-	}
-
-	@ConfigItem(
-		keyName = "coxRequireHumidify",
-		name = "Require Humidify",
-		description = "Require the ability to cast Humidify spell. Checks for: 1 Astral rune, 1 Fire rune, 1 Water rune, and Lunar spellbook. Elemental staves and charged tomes cover their element's rune.",
-		section = coxSection,
-		position = 3
-	)
-	default boolean coxRequireHumidify()
-	{
-		return false;
-	}
-
-	@ConfigItem(
-		keyName = "coxRequireVengeance",
-		name = "Require Vengeance",
-		description = "Require the ability to cast Vengeance spell. Checks for: 10 Earth runes, 4 Astral runes, 2 Death runes, and Lunar spellbook.",
-		section = coxSection,
-		position = 4
-	)
-	default boolean coxRequireVengeance()
-	{
-		return false;
+		return CoxSpellRequirement.NONE;
 	}
 
 	@ConfigItem(

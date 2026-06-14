@@ -431,7 +431,7 @@ public class AccessDeniedPlugin extends Plugin
 		{
 			String warningMessage = String.format(
 				"<col=ff0000>Warning: %s validation is enabled but no requirements are configured. " +
-				"Enable at least one requirement (Thralls or Death Charge) for validation to work.</col>",
+				"Enable at least one requirement for validation to work.</col>",
 				locationName
 			);
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", warningMessage, null);

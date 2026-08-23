@@ -15,17 +15,21 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.plugins.raids.Raid;
+import net.runelite.client.plugins.raids.RaidRoom;
 import net.runelite.client.plugins.raids.solver.Layout;
+import net.runelite.client.plugins.raids.solver.Room;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -49,6 +53,9 @@ class AccessDeniedPluginUnitTest
 
 	@Mock
 	private ConfigManager configManager;
+
+	@Mock
+	private ClientThread clientThread;
 
 	@Mock
 	private Player player;
@@ -79,11 +86,20 @@ class AccessDeniedPluginUnitTest
 		setField(plugin, "config", config);
 		setField(plugin, "playerStateValidator", validator);
 		setField(plugin, "configManager", configManager);
+		setField(plugin, "clientThread", clientThread);
 
 		// Setup default mocks
 		when(client.getLocalPlayer()).thenReturn(player);
 		when(client.getTopLevelWorldView()).thenReturn(worldView);
 		when(client.getMenu()).thenReturn(menu);
+
+		// The real ClientThread runs chat output inline when already on the client thread;
+		// mirror that so the existing addChatMessage verifications still see the call.
+		doAnswer(invocation ->
+		{
+			invocation.getArgument(0, Runnable.class).run();
+			return null;
+		}).when(clientThread).invoke(any(Runnable.class));
 	}
 
 	@Example
@@ -520,8 +536,9 @@ class AccessDeniedPluginUnitTest
 
 		// A re-scout of the same raid must not silently re-lock it.
 		when(config.coxScoutingEnabled()).thenReturn(true);
-		when(config.coxScoutWhitelistedRooms()).thenReturn("");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("fsccppcscf");
+		when(config.coxScoutRequiredRooms()).thenReturn("");
+		when(config.coxScoutDisallowedRooms()).thenReturn("");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
 		invokePrivate(plugin, "evaluateCoxScoutingRaid");
 
 		assertThat((boolean) getField(plugin, "coxScoutingRaidGood")).as("released raid must stay unlocked").isFalse();
@@ -577,6 +594,290 @@ class AccessDeniedPluginUnitTest
 	}
 
 	// Helper methods for reflection
+	/**
+	 * Puts the plugin in the state {@code evaluateCoxScoutingRaid} expects after a raid was
+	 * scouted: scouting on, a raid whose layout reports {@code codeString}, and no room filter
+	 * so the layout check is the only thing that can reject it.
+	 */
+	private void stubScoutedRaid(String codeString) throws Exception
+	{
+		Layout layout = mock(Layout.class);
+		when(layout.toCodeString()).thenReturn(codeString);
+		Raid raid = mock(Raid.class);
+		when(raid.getLayout()).thenReturn(layout);
+		setField(plugin, "currentCoxRaid", raid);
+
+		when(config.coxScoutingEnabled()).thenReturn(true);
+		when(config.coxScoutRequiredRooms()).thenReturn("");
+		when(config.coxScoutDisallowedRooms()).thenReturn("");
+		when(config.coxScoutAllowedLayouts()).thenReturn("");
+	}
+
+	/**
+	 * Gives the stubbed raid a room set. Uses real RaidRoom constants so the names and types
+	 * under test are the ones the client actually reports.
+	 */
+	private void stubRaidRooms(RaidRoom... rooms) throws Exception
+	{
+		Raid raid = (Raid) getField(plugin, "currentCoxRaid");
+		Room[] layoutRooms = new Room[rooms.length];
+		for (int i = 0; i < rooms.length; i++)
+		{
+			Room layoutRoom = mock(Room.class);
+			when(layoutRoom.getPosition()).thenReturn(i);
+			layoutRooms[i] = layoutRoom;
+			when(raid.getRoom(i)).thenReturn(rooms[i]);
+		}
+		when(raid.getLayout().getRooms()).thenReturn(Arrays.asList(layoutRooms));
+	}
+
+	private boolean evaluateScoutedRaid() throws Exception
+	{
+		invokePrivate(plugin, "evaluateCoxScoutingRaid");
+		return (boolean) getField(plugin, "coxScoutingRaidGood");
+	}
+
+	@Example
+	void testScoutingLayoutWhitelistStillMatchesFullCode() throws Exception
+	{
+		// A full code is its own prefix, so configs written before prefix matching existed
+		// must keep behaving identically.
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
+
+		assertThat(evaluateScoutedRaid()).as("a whitelisted full code must still lock the raid").isTrue();
+	}
+
+	@Example
+	void testScoutingLayoutWhitelistMatchesFourLetterPrefix() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc, scpf");
+
+		assertThat(evaluateScoutedRaid()).as("a four-letter prefix must select the layout family").isTrue();
+	}
+
+	@Example
+	void testScoutingLayoutWhitelistMatchesLaterPrefixEntry() throws Exception
+	{
+		// Guards against a scan that only ever looks at the first entry.
+		stubScoutedRaid("SCPFCCSPCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc, scpf");
+
+		assertThat(evaluateScoutedRaid()).as("every entry must be considered, not just the first").isTrue();
+	}
+
+	@Example
+	void testScoutingLayoutWhitelistRejectsUnlistedLayout() throws Exception
+	{
+		stubScoutedRaid("SCFCPCCSPF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc, scpf");
+
+		assertThat(evaluateScoutedRaid()).as("a layout matching no entry must stay unlocked").isFalse();
+	}
+
+	@Example
+	void testScoutingLayoutWhitelistDoesNotMatchMidStringSubstring() throws Exception
+	{
+		// Matching is startsWith, not contains — a substring from the middle must not match.
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("ppcscf");
+
+		assertThat(evaluateScoutedRaid()).as("entries must anchor to the start of the code").isFalse();
+	}
+
+	@Example
+	void testScoutingLayoutWhitelistIgnoresTrailingCommaAndWhitespace() throws Exception
+	{
+		// A surviving empty entry would prefix-match every layout and lock every raid.
+		stubScoutedRaid("SCFCPCCSPF");
+		when(config.coxScoutAllowedLayouts()).thenReturn(" fscc , ");
+
+		assertThat(evaluateScoutedRaid()).as("blank entries must not match everything").isFalse();
+	}
+
+	@Example
+	void testReleasedLockDoesNotSuppressDifferentLayoutSharingPrefix() throws Exception
+	{
+		// The release is identity, not a filter: unlocking one FSCC raid must not leave every
+		// other FSCC layout unprotected.
+		stubScoutedRaid("FSCCSPCPSF");
+		setField(plugin, "coxScoutingReleasedLayout", "FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+
+		assertThat(evaluateScoutedRaid()).as("releasing one layout must not release its whole prefix family").isTrue();
+	}
+
+	@Example
+	void testScoutingEvaluationDoesNotSendChatDirectlyFromCallingThread() throws Exception
+	{
+		// onConfigChanged arrives on the AWT event thread. Calling client.addChatMessage from
+		// there trips the client's own "must be called on client thread" assertion, which
+		// aborts evaluateCoxScoutingRaid before it can arm the lock.
+		doNothing().when(clientThread).invoke(any(Runnable.class));
+
+		stubScoutedRaid("SCPFCCSPSF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc, scpf");
+
+		assertThat(evaluateScoutedRaid()).as("the lock must arm even if chat output is deferred").isTrue();
+		verify(clientThread, atLeastOnce()).invoke(any(Runnable.class));
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+	}
+
+	@Example
+	void testRequiredRoomsMustAllBePresent() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.VASA, RaidRoom.SHAMANS);
+		when(config.coxScoutRequiredRooms()).thenReturn("tightrope, vasa");
+
+		assertThat(evaluateScoutedRaid()).as("every required room is present").isTrue();
+	}
+
+	@Example
+	void testRequiredRoomsRejectWhenOneIsMissing() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.SHAMANS);
+		when(config.coxScoutRequiredRooms()).thenReturn("tightrope, vasa");
+
+		assertThat(evaluateScoutedRaid()).as("a missing required room must fail the raid").isFalse();
+	}
+
+	@Example
+	void testUnlistedRoomsAreIgnored() throws Exception
+	{
+		// The old behaviour rejected any room absent from the whitelist. Now anything that
+		// appears in neither list is simply not considered.
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.VESPULA, RaidRoom.MUTTADILES);
+		when(config.coxScoutRequiredRooms()).thenReturn("tightrope");
+
+		assertThat(evaluateScoutedRaid()).as("rooms in neither list must not matter").isTrue();
+	}
+
+	@Example
+	void testDisallowedRoomRejectsRaid() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.CRABS);
+		when(config.coxScoutDisallowedRooms()).thenReturn("crabs");
+
+		assertThat(evaluateScoutedRaid()).as("a disallowed room must fail the raid").isFalse();
+	}
+
+	@Example
+	void testDisallowedRoomAbsentIsFine() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.VASA);
+		when(config.coxScoutDisallowedRooms()).thenReturn("crabs, thieving");
+
+		assertThat(evaluateScoutedRaid()).as("a disallowed list nothing matches must pass").isTrue();
+	}
+
+	@Example
+	void testDisallowedRoomBeatsSatisfiedRequiredRooms() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.CRABS);
+		when(config.coxScoutRequiredRooms()).thenReturn("tightrope");
+		when(config.coxScoutDisallowedRooms()).thenReturn("crabs");
+
+		assertThat(evaluateScoutedRaid()).as("a disallowed room must fail even when requirements are met").isFalse();
+	}
+
+	@Example
+	void testDisallowedRoomsAloneCanLockARaid() throws Exception
+	{
+		// Disallowed-only is a valid config: the "nothing configured" guard must not swallow it.
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.VASA);
+		when(config.coxScoutDisallowedRooms()).thenReturn("crabs");
+
+		assertThat(evaluateScoutedRaid()).as("a disallowed list on its own must still arm the lock").isTrue();
+	}
+
+	@Example
+	void testFarmingAndScavengerRoomsAreNotConsidered() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.SCAVENGERS, RaidRoom.FARMING);
+		when(config.coxScoutDisallowedRooms()).thenReturn("scavengers, farming");
+
+		assertThat(evaluateScoutedRaid()).as("only combat and puzzle rooms are checked").isTrue();
+	}
+
+	@Example
+	void testRoomAndLayoutChecksAreBothRequired() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE);
+		when(config.coxScoutRequiredRooms()).thenReturn("tightrope");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+
+		assertThat(evaluateScoutedRaid()).as("rooms passing must not excuse a failing layout").isFalse();
+	}
+
+	@Example
+	void testPartiallyScoutedRaidIsNotLockedYet() throws Exception
+	{
+		// An unwalked room still reports type COMBAT/PUZZLE, so it would never match a
+		// disallowed name and would lock a raid that may still turn out to contain one.
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.UNKNOWN_COMBAT);
+		when(config.coxScoutDisallowedRooms()).thenReturn("vespula");
+
+		assertThat(evaluateScoutedRaid()).as("an unfinished scout must not arm the lock").isFalse();
+	}
+
+	@Example
+	void testFullyScoutedRaidLocksOnceUnknownRoomsResolve() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.SHAMANS);
+		when(config.coxScoutDisallowedRooms()).thenReturn("vespula");
+
+		assertThat(evaluateScoutedRaid()).as("the same raid must lock once every room is known").isTrue();
+	}
+
+	@Example
+	void testStartUpDropsLegacyRoomWhitelistWithoutMigratingIt() throws Exception
+	{
+		// The key's meaning reversed, so the old value must be discarded, not carried over.
+		when(configManager.getConfiguration("accessdenied", "coxScoutWhitelistedRooms")).thenReturn("tightrope, vasa, vespula");
+
+		plugin.startUp();
+
+		verify(configManager).unsetConfiguration("accessdenied", "coxScoutWhitelistedRooms");
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxScoutRequiredRooms"), any());
+	}
+
+	@Example
+	void testStartUpCarriesLegacyLayoutWhitelistForward() throws Exception
+	{
+		// This key was only renamed, so the value still means what it did and must survive.
+		when(configManager.getConfiguration("accessdenied", "coxScoutWhitelistedLayouts")).thenReturn("fscc, scpf");
+		when(configManager.getConfiguration("accessdenied", "coxScoutAllowedLayouts")).thenReturn(null);
+
+		plugin.startUp();
+
+		verify(configManager).setConfiguration("accessdenied", "coxScoutAllowedLayouts", "fscc, scpf");
+		verify(configManager).unsetConfiguration("accessdenied", "coxScoutWhitelistedLayouts");
+	}
+
+	@Example
+	void testStartUpDoesNotOverwriteExplicitAllowedLayouts() throws Exception
+	{
+		when(configManager.getConfiguration("accessdenied", "coxScoutWhitelistedLayouts")).thenReturn("fscc");
+		when(configManager.getConfiguration("accessdenied", "coxScoutAllowedLayouts")).thenReturn("scpf");
+
+		plugin.startUp();
+
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxScoutAllowedLayouts"), any());
+		verify(configManager).unsetConfiguration("accessdenied", "coxScoutWhitelistedLayouts");
+	}
+
 	private void setField(Object target, String fieldName, Object value) throws Exception
 	{
 		Field field = target.getClass().getDeclaredField(fieldName);

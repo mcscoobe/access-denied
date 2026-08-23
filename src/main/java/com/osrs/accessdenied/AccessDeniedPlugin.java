@@ -12,6 +12,7 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -50,6 +51,9 @@ public class AccessDeniedPlugin extends Plugin
 	@Inject
 	private ConfigManager configManager;
 
+	@Inject
+	private ClientThread clientThread;
+
 	private BossLocation currentLocation;
 
 	/**
@@ -66,7 +70,7 @@ public class AccessDeniedPlugin extends Plugin
 	protected void startUp()
 	{
 		resetState();
-		migrateLegacyCoxSpellConfig();
+		migrateLegacyConfig();
 	}
 
 	@Override
@@ -83,6 +87,35 @@ public class AccessDeniedPlugin extends Plugin
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
 		coxScoutingReleasedLayout = null;
+	}
+
+	/**
+	 * Brings a profile written by an older version up to date. Runs on start-up and on every
+	 * profile switch, since ConfigManager.switchProfile() never re-invokes startUp().
+	 */
+	private void migrateLegacyConfig()
+	{
+		// coxScoutWhitelistedRooms listed the rooms a raid was permitted to contain;
+		// coxScoutRequiredRooms lists the ones it must contain. Carrying the value across
+		// would reverse its meaning and produce a filter that can never match, so the old
+		// key is dropped rather than migrated.
+		if (configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutWhitelistedRooms") != null)
+		{
+			configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutWhitelistedRooms");
+		}
+
+		// The layout key was only renamed — its values still mean exactly what they did.
+		String legacyLayouts = configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutWhitelistedLayouts");
+		if (legacyLayouts != null)
+		{
+			if (configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutAllowedLayouts") == null)
+			{
+				configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutAllowedLayouts", legacyLayouts);
+			}
+			configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutWhitelistedLayouts");
+		}
+
+		migrateLegacyCoxSpellConfig();
 	}
 
 	/**
@@ -158,7 +191,7 @@ public class AccessDeniedPlugin extends Plugin
 		boolean valid = lastMissing.isEmpty();
 		if (!valid && lastResultWasValid)
 		{
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", describe(lastMissing), null);
+			sendChatMessage(describe(lastMissing));
 		}
 
 		lastResultWasValid = valid;
@@ -184,7 +217,7 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		// ConfigManager.switchProfile() never re-invokes startUp(), so a profile with
 		// un-migrated legacy CoX keys would otherwise keep reading them as unset forever.
-		migrateLegacyCoxSpellConfig();
+		migrateLegacyConfig();
 	}
 
 	@Subscribe
@@ -271,39 +304,68 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		Set<String> roomWhitelist = new HashSet<>(Text.fromCSV(config.coxScoutWhitelistedRooms().toLowerCase()));
-		Set<String> layoutWhitelist = new HashSet<>(Text.fromCSV(config.coxScoutWhitelistedLayouts().toLowerCase()));
+		Set<String> requiredRooms = new HashSet<>(Text.fromCSV(config.coxScoutRequiredRooms().toLowerCase()));
+		Set<String> disallowedRooms = new HashSet<>(Text.fromCSV(config.coxScoutDisallowedRooms().toLowerCase()));
+		List<String> layoutWhitelist = Text.fromCSV(config.coxScoutAllowedLayouts().toLowerCase());
 
-		if (roomWhitelist.isEmpty() && layoutWhitelist.isEmpty())
+		if (requiredRooms.isEmpty() && disallowedRooms.isEmpty() && layoutWhitelist.isEmpty())
 		{
 			coxScoutingRaidGood = false;
 			return;
 		}
 
-		if (!roomWhitelist.isEmpty())
+		if (!requiredRooms.isEmpty() || !disallowedRooms.isEmpty())
 		{
-			for (Room layoutRoom : currentCoxRaid.getLayout().getRooms())
+			Set<RaidRoom> rooms = combatAndPuzzleRooms();
+
+			// A room the player has not walked to yet still reports type COMBAT/PUZZLE, so it
+			// would slip past the disallowed check and lock a raid that may yet turn out bad.
+			// Wait for the scout to finish instead.
+			if (rooms.contains(RaidRoom.UNKNOWN_COMBAT) || rooms.contains(RaidRoom.UNKNOWN_PUZZLE))
 			{
-				RaidRoom room = currentCoxRaid.getRoom(layoutRoom.getPosition());
-				if (room == null || (room.getType() != RoomType.COMBAT && room.getType() != RoomType.PUZZLE))
-				{
-					continue;
-				}
-				if (!roomWhitelist.contains(room.getName().toLowerCase()))
-				{
-					log.debug("evaluateCoxScoutingRaid: room '{}' not in whitelist — raid is bad", room.getName());
-					coxScoutingRaidGood = false;
-					return;
-				}
+				log.debug("evaluateCoxScoutingRaid: raid is not fully scouted yet — raid is bad");
+				coxScoutingRaidGood = false;
+				return;
+			}
+
+			Set<String> raidRooms = new HashSet<>();
+			for (RaidRoom room : rooms)
+			{
+				raidRooms.add(room.getName().toLowerCase());
+			}
+
+			// Required rooms must all be present; disallowed rooms must all be absent. Anything
+			// in neither list is ignored, so a raid is judged only on what was asked about.
+			Set<String> missing = new HashSet<>(requiredRooms);
+			missing.removeAll(raidRooms);
+
+			Set<String> disallowed = new HashSet<>(raidRooms);
+			disallowed.retainAll(disallowedRooms);
+
+			if (!missing.isEmpty())
+			{
+				log.debug("evaluateCoxScoutingRaid: raid is missing required rooms {} — raid is bad", missing);
+				coxScoutingRaidGood = false;
+				return;
+			}
+
+			if (!disallowed.isEmpty())
+			{
+				log.debug("evaluateCoxScoutingRaid: raid contains disallowed rooms {} — raid is bad", disallowed);
+				coxScoutingRaidGood = false;
+				return;
 			}
 		}
 
 		if (!layoutWhitelist.isEmpty())
 		{
+			// Entries match by prefix so a partial code like "fscc" selects a family of layouts.
+			// A full code is its own prefix and still matches only itself: no layout in the
+			// client's table is a prefix of a different one.
 			String layoutCode = currentCoxRaid.getLayout().toCodeString().toLowerCase();
-			if (!layoutWhitelist.contains(layoutCode))
+			if (layoutWhitelist.stream().noneMatch(layoutCode::startsWith))
 			{
-				log.debug("evaluateCoxScoutingRaid: layout '{}' not in whitelist — raid is bad", layoutCode);
+				log.debug("evaluateCoxScoutingRaid: layout '{}' matches no whitelisted layout or prefix — raid is bad", layoutCode);
 				coxScoutingRaidGood = false;
 				return;
 			}
@@ -314,8 +376,7 @@ public class AccessDeniedPlugin extends Plugin
 
 		if (!wasGood)
 		{
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-				"Good raid found — reload protection active.", null);
+			sendChatMessage("Good raid found — reload protection active.");
 		}
 	}
 
@@ -343,12 +404,39 @@ public class AccessDeniedPlugin extends Plugin
 			.onClick(e -> releaseCoxScoutingLock());
 	}
 
+	/**
+	 * The raid's combat and puzzle rooms. Farming, scavenger and empty rooms are deliberately
+	 * excluded: they are not what players filter raids on.
+	 */
+	private Set<RaidRoom> combatAndPuzzleRooms()
+	{
+		Set<RaidRoom> rooms = new HashSet<>();
+		for (Room layoutRoom : currentCoxRaid.getLayout().getRooms())
+		{
+			RaidRoom room = currentCoxRaid.getRoom(layoutRoom.getPosition());
+			if (room != null && (room.getType() == RoomType.COMBAT || room.getType() == RoomType.PUZZLE))
+			{
+				rooms.add(room);
+			}
+		}
+		return rooms;
+	}
+
+	/**
+	 * Chat output must happen on the client thread, but config edits arrive on the AWT event
+	 * thread — sending from there trips the client's own assertion and aborts the caller
+	 * mid-evaluation. invoke() still runs inline when already on the client thread.
+	 */
+	private void sendChatMessage(String message)
+	{
+		clientThread.invoke(() -> client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", message, null));
+	}
+
 	private void releaseCoxScoutingLock()
 	{
 		coxScoutingRaidGood = false;
 		coxScoutingReleasedLayout = currentCoxRaid != null ? currentCoxRaid.getLayout().toCodeString() : null;
-		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-			"Reload protection released — the reload option is available again.", null);
+		sendChatMessage("Reload protection released — the reload option is available again.");
 	}
 
 	private void removeGameObjectEntriesForObject(int objectId)
@@ -437,10 +525,10 @@ public class AccessDeniedPlugin extends Plugin
 
 			if (location.isEnabled(config) && !location.hasRequirements(config))
 			{
-				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", String.format(
+				sendChatMessage(String.format(
 					"<col=ff0000>Warning: %s validation is enabled but no requirements are configured. "
 						+ "Enable at least one requirement for validation to work.</col>",
-					location.getDisplayName()), null);
+					location.getDisplayName()));
 			}
 			return;
 		}

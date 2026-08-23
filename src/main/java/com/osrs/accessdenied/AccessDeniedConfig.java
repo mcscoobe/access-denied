@@ -280,7 +280,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "coxScoutingEnabled",
 		name = "Enable Scouting Protection",
-		description = "When a scouted raid passes all configured whitelist checks, replaces the left-click on the reload object with Walk Here to prevent accidental reloads.",
+		description = "When a scouted raid passes all configured room and layout checks, replaces the left-click on the reload object with Walk Here to prevent accidental reloads.",
 		section = coxScoutingSection,
 		position = 0
 	)
@@ -290,30 +290,40 @@ public interface AccessDeniedConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "coxScoutWhitelistedRooms",
-		name = "Whitelisted Rooms",
-		description = "Comma-separated list of acceptable combat and puzzle room names (e.g. Vespula, Vasa, Tightrope). "
-			+ "Only combat and puzzle rooms are checked, and every one in the raid must appear in this list for the raid "
-			+ "to be considered good. Names must match the client's room names exactly — \"Vasa\", not \"Vasa Nistirio\". "
-			+ "Leave empty to skip the room check.",
+		keyName = "coxScoutRequiredRooms",
+		name = "Required Rooms",
+		description = "Rooms the raid must all contain. Combat/puzzle only, exact names (e.g. Tightrope, Vasa). "
+			+ "Empty = no check.",
 		section = coxScoutingSection,
 		position = 1
 	)
-	default String coxScoutWhitelistedRooms()
+	default String coxScoutRequiredRooms()
 	{
 		return "";
 	}
 
 	@ConfigItem(
-		keyName = "coxScoutWhitelistedLayouts",
-		name = "Whitelisted Layouts",
-		description = "Comma-separated list of acceptable layout codes (e.g. fsccppcscf). Layout codes are built only from "
-			+ "the letters F, S, C and P (farming, scavengers, combat, puzzle). The raid layout code must appear in this "
-			+ "list for the raid to be considered good. Leave empty to skip the layout check.",
+		keyName = "coxScoutDisallowedRooms",
+		name = "Disallowed Rooms",
+		description = "Rooms the raid must not contain. Combat/puzzle only, exact names (e.g. Crabs, Thieving). "
+			+ "Empty = no check.",
 		section = coxScoutingSection,
 		position = 2
 	)
-	default String coxScoutWhitelistedLayouts()
+	default String coxScoutDisallowedRooms()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "coxScoutAllowedLayouts",
+		name = "Allowed Layouts",
+		description = "Layout codes the raid must start with. Full code (fsccppcscf) = one layout, partial "
+			+ "(fscc, scpf) = a family. Empty = no check.",
+		section = coxScoutingSection,
+		position = 3
+	)
+	default String coxScoutAllowedLayouts()
 	{
 		return "";
 	}

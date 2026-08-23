@@ -15,6 +15,7 @@ import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.raids.Raid;
@@ -230,6 +231,15 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
+	}
+
+	@SuppressWarnings("unused")
+	@Subscribe
+	public void onProfileChanged(ProfileChanged event)
+	{
+		// ConfigManager.switchProfile() never re-invokes startUp(), so a profile with
+		// un-migrated legacy CoX keys would otherwise keep reading them as unset forever.
+		migrateLegacyCoxSpellConfig();
 	}
 
 	@Subscribe
@@ -533,23 +543,9 @@ public class AccessDeniedPlugin extends Plugin
 			if (!playerStateValidator.isOnArceuusSpellbook()) { missing.add("Arceuus spellbook"); }
 		}
 
-		if (banChugJug && playerStateValidator.hasChugJug())
-		{
-			missing.add("remove Chug Jug");
-		}
+		addBanChecks(missing, banChugJug, "remove Chug Jug", banSaturatedHeart);
 
-		if (banSaturatedHeart && playerStateValidator.hasSaturatedHeart())
-		{
-			missing.add("remove Saturated Heart");
-		}
-
-		if (missing.isEmpty())
-		{
-			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
-		}
-
-		String msg = "Missing: " + String.join(", ", missing);
-		return new ValidationResult(false, java.util.Collections.singleton(msg), msg);
+		return buildValidationResult(missing);
 	}
 
 	private ValidationResult validateCoxRequirements()
@@ -585,23 +581,9 @@ public class AccessDeniedPlugin extends Plugin
 			if (!playerStateValidator.isOnLunarSpellbook()) { missing.add("Lunar spellbook"); }
 		}
 
-		if (config.coxBanChugJug() && playerStateValidator.hasChugJug())
-		{
-			missing.add("remove Chugging Barrel");
-		}
+		addBanChecks(missing, config.coxBanChugJug(), "remove Chugging Barrel", config.coxBanSaturatedHeart());
 
-		if (config.coxBanSaturatedHeart() && playerStateValidator.hasSaturatedHeart())
-		{
-			missing.add("remove Saturated Heart");
-		}
-
-		if (missing.isEmpty())
-		{
-			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
-		}
-
-		String msg = "Missing: " + String.join(", ", missing);
-		return new ValidationResult(false, java.util.Collections.singleton(msg), msg);
+		return buildValidationResult(missing);
 	}
 
 	private ValidationResult validateInfernoRequirements()
@@ -623,16 +605,26 @@ public class AccessDeniedPlugin extends Plugin
 			if (!playerStateValidator.isOnAncientSpellbook()) { missing.add("Ancient spellbook"); }
 		}
 
-		if (config.infernoBanChugJug() && playerStateValidator.hasChugJug())
+		addBanChecks(missing, config.infernoBanChugJug(), "remove Chug Jug", config.infernoBanSaturatedHeart());
+
+		return buildValidationResult(missing);
+	}
+
+	private void addBanChecks(java.util.List<String> missing, boolean banChugJug, String chugJugMissingMessage, boolean banSaturatedHeart)
+	{
+		if (banChugJug && playerStateValidator.hasChugJug())
 		{
-			missing.add("remove Chug Jug");
+			missing.add(chugJugMissingMessage);
 		}
 
-		if (config.infernoBanSaturatedHeart() && playerStateValidator.hasSaturatedHeart())
+		if (banSaturatedHeart && playerStateValidator.hasSaturatedHeart())
 		{
 			missing.add("remove Saturated Heart");
 		}
+	}
 
+	private ValidationResult buildValidationResult(java.util.List<String> missing)
+	{
 		if (missing.isEmpty())
 		{
 			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");

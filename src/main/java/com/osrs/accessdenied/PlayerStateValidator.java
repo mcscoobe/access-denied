@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * Service class responsible for validating player state against area requirements.
@@ -302,6 +303,21 @@ public class PlayerStateValidator
 	 */
 	private void forEachCarriedOrWornItem(Consumer<Item> action)
 	{
+		anyCarriedOrWornItemMatches(item ->
+		{
+			action.accept(item);
+			return false;
+		});
+	}
+
+	/**
+	 * Scans the player's inventory then worn equipment, stopping as soon as {@code matcher}
+	 * matches an item. Skips either container if it isn't present (e.g. not yet loaded).
+	 *
+	 * @return true if some item matched, false if none did
+	 */
+	private boolean anyCarriedOrWornItemMatches(Predicate<Item> matcher)
+	{
 		int[] containerIds = {InventoryID.INV, InventoryID.WORN};
 
 		for (int containerId : containerIds)
@@ -314,12 +330,14 @@ public class PlayerStateValidator
 
 			for (Item item : container.getItems())
 			{
-				if (item != null)
+				if (item != null && matcher.test(item))
 				{
-					action.accept(item);
+					return true;
 				}
 			}
 		}
+
+		return false;
 	}
 
 	public boolean hasChugJug()
@@ -408,18 +426,10 @@ public class PlayerStateValidator
 	public boolean hasBookOfTheDead()
 	{
 		final int BOOK_OF_THE_DEAD_ID = ItemID.BOOK_OF_THE_DEAD;
-		boolean[] found = {false};
+		boolean found = anyCarriedOrWornItemMatches(item -> item.getId() == BOOK_OF_THE_DEAD_ID);
 
-		forEachCarriedOrWornItem(item ->
-		{
-			if (item.getId() == BOOK_OF_THE_DEAD_ID)
-			{
-				found[0] = true;
-			}
-		});
-
-		log.debug("Book of the Dead {}found", found[0] ? "" : "NOT ");
-		return found[0];
+		log.debug("Book of the Dead {}found", found ? "" : "NOT ");
+		return found;
 	}
 
 	/**

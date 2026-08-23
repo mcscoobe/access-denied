@@ -13,6 +13,7 @@ import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.ProfileChanged;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -150,6 +151,21 @@ public class AccessDeniedPluginUnitTest
 
 		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxSpellRequirement"), any());
 		verify(configManager).unsetConfiguration("accessdenied", "coxRequireSpell");
+	}
+
+	@Test
+	public void testOnProfileChangedRerunsLegacyCoxSpellMigration() throws Exception
+	{
+		// ConfigManager.switchProfile() never re-invokes startUp(), so a profile switch
+		// must independently re-trigger migration for the newly active profile's data.
+		when(configManager.getConfiguration("accessdenied", "coxRequireVengeance")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxSpellRequirement")).thenReturn(null);
+
+		ProfileChanged event = mock(ProfileChanged.class);
+		plugin.onProfileChanged(event);
+
+		verify(configManager).setConfiguration("accessdenied", "coxSpellRequirement", CoxSpellRequirement.VENGEANCE);
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireVengeance");
 	}
 
 	@Test

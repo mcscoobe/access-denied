@@ -275,39 +275,52 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		Set<String> roomWhitelist = new HashSet<>(Text.fromCSV(config.coxScoutWhitelistedRooms().toLowerCase()));
-		Set<String> layoutWhitelist = new HashSet<>(Text.fromCSV(config.coxScoutWhitelistedLayouts().toLowerCase()));
+		Set<String> requiredRooms = new HashSet<>(Text.fromCSV(config.coxScoutRequiredRooms().toLowerCase()));
+		Set<String> disallowedRooms = new HashSet<>(Text.fromCSV(config.coxScoutDisallowedRooms().toLowerCase()));
+		List<String> layoutWhitelist = Text.fromCSV(config.coxScoutWhitelistedLayouts().toLowerCase());
 
-		if (roomWhitelist.isEmpty() && layoutWhitelist.isEmpty())
+		if (requiredRooms.isEmpty() && disallowedRooms.isEmpty() && layoutWhitelist.isEmpty())
 		{
 			coxScoutingRaidGood = false;
 			return;
 		}
 
-		if (!roomWhitelist.isEmpty())
+		if (!requiredRooms.isEmpty() || !disallowedRooms.isEmpty())
 		{
-			for (Room layoutRoom : currentCoxRaid.getLayout().getRooms())
+			Set<String> raidRooms = combatAndPuzzleRoomNames();
+
+			// Required rooms must all be present; disallowed rooms must all be absent. Anything
+			// in neither list is ignored, so a raid is judged only on what was asked about.
+			Set<String> missing = new HashSet<>(requiredRooms);
+			missing.removeAll(raidRooms);
+
+			Set<String> disallowed = new HashSet<>(raidRooms);
+			disallowed.retainAll(disallowedRooms);
+
+			if (!missing.isEmpty())
 			{
-				RaidRoom room = currentCoxRaid.getRoom(layoutRoom.getPosition());
-				if (room == null || (room.getType() != RoomType.COMBAT && room.getType() != RoomType.PUZZLE))
-				{
-					continue;
-				}
-				if (!roomWhitelist.contains(room.getName().toLowerCase()))
-				{
-					log.debug("evaluateCoxScoutingRaid: room '{}' not in whitelist — raid is bad", room.getName());
-					coxScoutingRaidGood = false;
-					return;
-				}
+				log.debug("evaluateCoxScoutingRaid: raid is missing required rooms {} — raid is bad", missing);
+				coxScoutingRaidGood = false;
+				return;
+			}
+
+			if (!disallowed.isEmpty())
+			{
+				log.debug("evaluateCoxScoutingRaid: raid contains disallowed rooms {} — raid is bad", disallowed);
+				coxScoutingRaidGood = false;
+				return;
 			}
 		}
 
 		if (!layoutWhitelist.isEmpty())
 		{
+			// Entries match by prefix so a partial code like "fscc" selects a family of layouts.
+			// A full code is its own prefix and still matches only itself: no layout in the
+			// client's table is a prefix of a different one.
 			String layoutCode = currentCoxRaid.getLayout().toCodeString().toLowerCase();
-			if (!layoutWhitelist.contains(layoutCode))
+			if (layoutWhitelist.stream().noneMatch(layoutCode::startsWith))
 			{
-				log.debug("evaluateCoxScoutingRaid: layout '{}' not in whitelist — raid is bad", layoutCode);
+				log.debug("evaluateCoxScoutingRaid: layout '{}' matches no whitelisted layout or prefix — raid is bad", layoutCode);
 				coxScoutingRaidGood = false;
 				return;
 			}
@@ -351,6 +364,24 @@ public class AccessDeniedPlugin extends Plugin
 	 * thread — sending from there trips the client's own assertion and aborts the caller
 	 * mid-evaluation. invoke() still runs inline when already on the client thread.
 	 */
+	/**
+	 * Lowercased names of the raid's combat and puzzle rooms. Farming, scavenger and empty
+	 * rooms are deliberately excluded: they are not what players filter raids on.
+	 */
+	private Set<String> combatAndPuzzleRoomNames()
+	{
+		Set<String> names = new HashSet<>();
+		for (Room layoutRoom : currentCoxRaid.getLayout().getRooms())
+		{
+			RaidRoom room = currentCoxRaid.getRoom(layoutRoom.getPosition());
+			if (room != null && (room.getType() == RoomType.COMBAT || room.getType() == RoomType.PUZZLE))
+			{
+				names.add(room.getName().toLowerCase());
+			}
+		}
+		return names;
+	}
+
 	private void sendChatMessage(String message)
 	{
 		clientThread.invoke(() -> client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", message, null));

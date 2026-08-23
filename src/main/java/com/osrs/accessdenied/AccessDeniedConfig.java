@@ -292,7 +292,10 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "coxScoutWhitelistedRooms",
 		name = "Whitelisted Rooms",
-		description = "Comma-separated list of acceptable room names (e.g. Vespula, Vasa Nistirio). Every room in the raid must appear in this list for the raid to be considered good. Leave empty to skip the room check.",
+		description = "Comma-separated list of acceptable combat and puzzle room names (e.g. Vespula, Vasa, Tightrope). "
+			+ "Only combat and puzzle rooms are checked, and every one in the raid must appear in this list for the raid "
+			+ "to be considered good. Names must match the client's room names exactly — \"Vasa\", not \"Vasa Nistirio\". "
+			+ "Leave empty to skip the room check.",
 		section = coxScoutingSection,
 		position = 1
 	)
@@ -304,7 +307,9 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "coxScoutWhitelistedLayouts",
 		name = "Whitelisted Layouts",
-		description = "Comma-separated list of acceptable layout codes (e.g. fscav). The raid layout code must appear in this list for the raid to be considered good. Leave empty to skip the layout check.",
+		description = "Comma-separated list of acceptable layout codes (e.g. fsccppcscf). Layout codes are built only from "
+			+ "the letters F, S, C and P (farming, scavengers, combat, puzzle). The raid layout code must appear in this "
+			+ "list for the raid to be considered good. Leave empty to skip the layout check.",
 		section = coxScoutingSection,
 		position = 2
 	)

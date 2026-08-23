@@ -111,6 +111,27 @@ public class AccessDeniedPluginUnitTest
 	}
 
 	@Test
+	public void testStartUpMigrationResolvesCrossSpellbookLegacyConflictToArceuus() throws Exception
+	{
+		// Saved before the mutual-exclusion fix (commit 2666029): both an Arceuus and a
+		// Lunar toggle are enabled at once. The migration must not silently drop everything.
+		when(configManager.getConfiguration("accessdenied", "coxRequireSpell")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxRequireDeathCharge")).thenReturn("false");
+		when(configManager.getConfiguration("accessdenied", "coxRequireHumidify")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxRequireVengeance")).thenReturn("false");
+		when(configManager.getConfiguration("accessdenied", "coxSpellRequirement")).thenReturn(null);
+
+		plugin.startUp();
+
+		verify(configManager).setConfiguration("accessdenied", "coxSpellRequirement", CoxSpellRequirement.THRALLS);
+		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""), anyString(), isNull());
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireSpell");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireDeathCharge");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireHumidify");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireVengeance");
+	}
+
+	@Test
 	public void testStartUpSkipsMigrationWhenNoLegacyKeysPresent() throws Exception
 	{
 		plugin.startUp();

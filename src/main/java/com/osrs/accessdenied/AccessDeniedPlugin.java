@@ -75,7 +75,10 @@ public class AccessDeniedPlugin extends Plugin
 	 * coxRequireDeathCharge/coxRequireHumidify/coxRequireVengeance) into the
 	 * coxSpellRequirement enum they were replaced by, then removes the old keys. Without
 	 * this, users who had one of those toggles enabled would silently lose their CoX
-	 * requirement on upgrade, since nothing reads the old keys any more.
+	 * requirement on upgrade, since nothing reads the old keys any more. A saved state
+	 * spanning both spellbooks (only possible before commit 2666029 enforced mutual
+	 * exclusion) falls back to the Arceuus half with a chat warning, rather than being
+	 * silently dropped to no requirement at all.
 	 */
 	private void migrateLegacyCoxSpellConfig()
 	{
@@ -91,11 +94,23 @@ public class AccessDeniedPlugin extends Plugin
 
 		if (configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxSpellRequirement") == null)
 		{
-			CoxSpellRequirement migrated = CoxSpellRequirement.fromLegacyFlags(
-				Boolean.parseBoolean(legacySpell),
-				Boolean.parseBoolean(legacyDeathCharge),
-				Boolean.parseBoolean(legacyHumidify),
-				Boolean.parseBoolean(legacyVengeance));
+			boolean thralls = Boolean.parseBoolean(legacySpell);
+			boolean deathCharge = Boolean.parseBoolean(legacyDeathCharge);
+			boolean humidify = Boolean.parseBoolean(legacyHumidify);
+			boolean vengeance = Boolean.parseBoolean(legacyVengeance);
+
+			CoxSpellRequirement migrated = CoxSpellRequirement.fromLegacyFlags(thralls, deathCharge, humidify, vengeance);
+			if (migrated == null)
+			{
+				// Saved before spellbook conflicts were resolved (commit 2666029) and never
+				// re-touched since, so both groups are still enabled. Keep the Arceuus half
+				// and tell the player, rather than silently dropping the whole requirement.
+				migrated = CoxSpellRequirement.fromLegacyFlags(thralls, deathCharge, false, false);
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+					"<col=ff0000>Chambers of Xeric had conflicting spell requirements saved from an "
+					+ "older version (both Arceuus and Lunar spells required). Kept the Arceuus "
+					+ "requirement (" + migrated + ") — check the Access Denied config panel.</col>", null);
+			}
 			configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxSpellRequirement", migrated);
 		}
 

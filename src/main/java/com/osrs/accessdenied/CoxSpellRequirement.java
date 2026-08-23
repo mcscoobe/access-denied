@@ -79,8 +79,10 @@ public enum CoxSpellRequirement
 	 * coxRequireHumidify/coxRequireVengeance) to the equivalent enum value, for migrating
 	 * configs saved before this enum existed.
 	 *
-	 * @return the matching value, or {@link #NONE} if the flags don't correspond to any
-	 * value (e.g. a cross-spellbook combination that should never have been saved)
+	 * @return the matching value, or {@code null} if the flags don't correspond to any
+	 * value (e.g. a cross-spellbook combination saved before spellbook conflicts were
+	 * resolved) — callers must decide how to resolve that case rather than have it
+	 * silently discarded
 	 */
 	public static CoxSpellRequirement fromLegacyFlags(boolean thralls, boolean deathCharge, boolean humidify, boolean vengeance)
 	{
@@ -92,6 +94,6 @@ public enum CoxSpellRequirement
 				return requirement;
 			}
 		}
-		return NONE;
+		return null;
 	}
 }

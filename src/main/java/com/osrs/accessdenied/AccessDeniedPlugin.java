@@ -45,6 +45,10 @@ public class AccessDeniedPlugin extends Plugin
 	@Inject
 	private PlayerStateValidator playerStateValidator;
 
+	@SuppressWarnings("unused")
+	@Inject
+	private ConfigManager configManager;
+
 	private BossLocation currentLocation;
 	private int[] currentRegions;
 	private ValidationResult lastResult;
@@ -63,6 +67,42 @@ public class AccessDeniedPlugin extends Plugin
 		coxRaidActive = false;
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
+		migrateLegacyCoxSpellConfig();
+	}
+
+	/**
+	 * Carries forward the four legacy CoX boolean toggles (coxRequireSpell/
+	 * coxRequireDeathCharge/coxRequireHumidify/coxRequireVengeance) into the
+	 * coxSpellRequirement enum they were replaced by, then removes the old keys. Without
+	 * this, users who had one of those toggles enabled would silently lose their CoX
+	 * requirement on upgrade, since nothing reads the old keys any more.
+	 */
+	private void migrateLegacyCoxSpellConfig()
+	{
+		String legacySpell = configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireSpell");
+		String legacyDeathCharge = configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireDeathCharge");
+		String legacyHumidify = configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireHumidify");
+		String legacyVengeance = configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireVengeance");
+
+		if (legacySpell == null && legacyDeathCharge == null && legacyHumidify == null && legacyVengeance == null)
+		{
+			return;
+		}
+
+		if (configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxSpellRequirement") == null)
+		{
+			CoxSpellRequirement migrated = CoxSpellRequirement.fromLegacyFlags(
+				Boolean.parseBoolean(legacySpell),
+				Boolean.parseBoolean(legacyDeathCharge),
+				Boolean.parseBoolean(legacyHumidify),
+				Boolean.parseBoolean(legacyVengeance));
+			configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxSpellRequirement", migrated);
+		}
+
+		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireSpell");
+		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireDeathCharge");
+		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireHumidify");
+		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireVengeance");
 	}
 
 	@Override
@@ -219,11 +259,12 @@ public class AccessDeniedPlugin extends Plugin
 				// When validation isn't required, lastResult stays null and this cheap
 				// isValidationRequired check simply re-runs per event — onGameTick owns the
 				// cache lifecycle (it nulls lastResult every tick when validation is off), so
-				// there is no cache to populate here.
+				// there is no cache to populate here. lastResultWasValid is intentionally left
+				// untouched: onGameTick alone decides whether the chat warning fires, so an
+				// invalid result computed here doesn't get treated as "already warned about".
 				if (lastResult == null && isValidationRequired(currentLocation))
 				{
 					lastResult = validateLocationRequirements(currentLocation);
-					lastResultWasValid = lastResult.isValid();
 				}
 
 				if (lastResult != null && !lastResult.isValid())

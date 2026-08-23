@@ -9,7 +9,9 @@ import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
 import net.runelite.api.WorldView;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import org.junit.After;
 import org.junit.Before;
@@ -40,6 +42,9 @@ public class AccessDeniedPluginUnitTest
 	private PlayerStateValidator validator;
 
 	@Mock
+	private ConfigManager configManager;
+
+	@Mock
 	private Player player;
 
 	@Mock
@@ -67,6 +72,7 @@ public class AccessDeniedPluginUnitTest
 		setField(plugin, "client", client);
 		setField(plugin, "config", config);
 		setField(plugin, "playerStateValidator", validator);
+		setField(plugin, "configManager", configManager);
 
 		// Setup default mocks
 		when(client.getLocalPlayer()).thenReturn(player);
@@ -84,6 +90,45 @@ public class AccessDeniedPluginUnitTest
 		assertNull(getField(plugin, "currentRegions"));
 		assertNull(getField(plugin, "lastResult"));
 		assertTrue(getField(plugin, "lastResultWasValid"));
+	}
+
+	@Test
+	public void testStartUpMigratesLegacyCoxSpellConfig() throws Exception
+	{
+		when(configManager.getConfiguration("accessdenied", "coxRequireSpell")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxRequireDeathCharge")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxRequireHumidify")).thenReturn("false");
+		when(configManager.getConfiguration("accessdenied", "coxRequireVengeance")).thenReturn("false");
+		when(configManager.getConfiguration("accessdenied", "coxSpellRequirement")).thenReturn(null);
+
+		plugin.startUp();
+
+		verify(configManager).setConfiguration("accessdenied", "coxSpellRequirement", CoxSpellRequirement.THRALLS_AND_DEATH_CHARGE);
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireSpell");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireDeathCharge");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireHumidify");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireVengeance");
+	}
+
+	@Test
+	public void testStartUpSkipsMigrationWhenNoLegacyKeysPresent() throws Exception
+	{
+		plugin.startUp();
+
+		verify(configManager, never()).setConfiguration(anyString(), anyString(), any());
+		verify(configManager, never()).unsetConfiguration(anyString(), anyString());
+	}
+
+	@Test
+	public void testStartUpMigrationDoesNotOverwriteExplicitCoxSpellRequirement() throws Exception
+	{
+		when(configManager.getConfiguration("accessdenied", "coxRequireSpell")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxSpellRequirement")).thenReturn("VENGEANCE");
+
+		plugin.startUp();
+
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxSpellRequirement"), any());
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireSpell");
 	}
 
 	@Test
@@ -446,6 +491,40 @@ public class AccessDeniedPluginUnitTest
 		assertNotNull("on-demand validation should cache a result", cached);
 		assertFalse("cached result should be invalid", cached.isValid());
 		verify(menu).setMenuEntries(any());
+	}
+
+	@Test
+	public void testOnMenuEntryAddedOnDemandInvalidDoesNotSuppressNextGameTickWarning() throws Exception
+	{
+		// Regression test: onMenuEntryAdded's on-demand validation must not mark the
+		// invalid result as "already warned about" — onGameTick alone decides when the
+		// chat warning fires, so it must still fire on the very next tick.
+		setField(plugin, "currentLocation", BossLocations.NEX);
+		setField(plugin, "lastResult", null);
+		setField(plugin, "lastResultWasValid", true);
+
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexRequireSpell()).thenReturn(true);
+		// validator mock returns false by default, so validation is invalid
+
+		MenuEntry walkEntry = mock(MenuEntry.class);
+		when(walkEntry.getType()).thenReturn(MenuAction.WALK);
+		MenuEntry objectEntry = mock(MenuEntry.class);
+		when(objectEntry.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{walkEntry, objectEntry});
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		assertTrue("lastResultWasValid must stay true so onGameTick still fires the warning",
+			(boolean) getField(plugin, "lastResultWasValid"));
+
+		plugin.onGameTick(mock(GameTick.class));
+
+		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""), anyString(), isNull());
 	}
 
 	@Test

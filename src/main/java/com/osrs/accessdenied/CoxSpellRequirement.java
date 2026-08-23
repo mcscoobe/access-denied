@@ -73,4 +73,25 @@ public enum CoxSpellRequirement
 	{
 		return displayName;
 	}
+
+	/**
+	 * Maps the four legacy boolean toggles (coxRequireSpell/coxRequireDeathCharge/
+	 * coxRequireHumidify/coxRequireVengeance) to the equivalent enum value, for migrating
+	 * configs saved before this enum existed.
+	 *
+	 * @return the matching value, or {@link #NONE} if the flags don't correspond to any
+	 * value (e.g. a cross-spellbook combination that should never have been saved)
+	 */
+	public static CoxSpellRequirement fromLegacyFlags(boolean thralls, boolean deathCharge, boolean humidify, boolean vengeance)
+	{
+		for (CoxSpellRequirement requirement : values())
+		{
+			if (requirement.thralls == thralls && requirement.deathCharge == deathCharge
+				&& requirement.humidify == humidify && requirement.vengeance == vengeance)
+			{
+				return requirement;
+			}
+		}
+		return NONE;
+	}
 }

@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Service class responsible for validating player state against area requirements.
@@ -278,6 +279,29 @@ public class PlayerStateValidator
 	private Set<Integer> getInfiniteRuneSources()
 	{
 		Set<Integer> covered = new HashSet<>();
+
+		forEachCarriedOrWornItem(item ->
+		{
+			int[] runes = INFINITE_RUNE_SOURCES.get(item.getId());
+			if (runes != null)
+			{
+				log.debug("Infinite rune source found: item {} covers runes {}", item.getId(), runes);
+				for (int runeId : runes)
+				{
+					covered.add(runeId);
+				}
+			}
+		});
+
+		return covered;
+	}
+
+	/**
+	 * Invokes {@code action} for every non-null item in the player's inventory and worn
+	 * equipment, skipping either container if it isn't present (e.g. not yet loaded).
+	 */
+	private void forEachCarriedOrWornItem(Consumer<Item> action)
+	{
 		int[] containerIds = {InventoryID.INV, InventoryID.WORN};
 
 		for (int containerId : containerIds)
@@ -290,24 +314,12 @@ public class PlayerStateValidator
 
 			for (Item item : container.getItems())
 			{
-				if (item == null)
+				if (item != null)
 				{
-					continue;
-				}
-
-				int[] runes = INFINITE_RUNE_SOURCES.get(item.getId());
-				if (runes != null)
-				{
-					log.debug("Infinite rune source found: item {} covers runes {}", item.getId(), runes);
-					for (int runeId : runes)
-					{
-						covered.add(runeId);
-					}
+					action.accept(item);
 				}
 			}
 		}
-
-		return covered;
 	}
 
 	public boolean hasChugJug()
@@ -396,35 +408,18 @@ public class PlayerStateValidator
 	public boolean hasBookOfTheDead()
 	{
 		final int BOOK_OF_THE_DEAD_ID = ItemID.BOOK_OF_THE_DEAD;
+		boolean[] found = {false};
 
-		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
-		if (inventory != null)
+		forEachCarriedOrWornItem(item ->
 		{
-			for (Item item : inventory.getItems())
+			if (item.getId() == BOOK_OF_THE_DEAD_ID)
 			{
-				if (item != null && item.getId() == BOOK_OF_THE_DEAD_ID)
-				{
-					log.debug("Book of the Dead found in inventory");
-					return true;
-				}
+				found[0] = true;
 			}
-		}
+		});
 
-		ItemContainer equipment = client.getItemContainer(InventoryID.WORN);
-		if (equipment != null)
-		{
-			for (Item item : equipment.getItems())
-			{
-				if (item != null && item.getId() == BOOK_OF_THE_DEAD_ID)
-				{
-					log.debug("Book of the Dead found in equipment");
-					return true;
-				}
-			}
-		}
-
-		log.debug("Book of the Dead NOT found");
-		return false;
+		log.debug("Book of the Dead {}found", found[0] ? "" : "NOT ");
+		return found[0];
 	}
 
 	/**

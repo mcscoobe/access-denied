@@ -15,6 +15,7 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.ProfileChanged;
@@ -51,6 +52,9 @@ class AccessDeniedPluginUnitTest
 	private ConfigManager configManager;
 
 	@Mock
+	private ClientThread clientThread;
+
+	@Mock
 	private Player player;
 
 	@Mock
@@ -79,11 +83,20 @@ class AccessDeniedPluginUnitTest
 		setField(plugin, "config", config);
 		setField(plugin, "playerStateValidator", validator);
 		setField(plugin, "configManager", configManager);
+		setField(plugin, "clientThread", clientThread);
 
 		// Setup default mocks
 		when(client.getLocalPlayer()).thenReturn(player);
 		when(client.getTopLevelWorldView()).thenReturn(worldView);
 		when(client.getMenu()).thenReturn(menu);
+
+		// The real ClientThread runs chat output inline when already on the client thread;
+		// mirror that so the existing addChatMessage verifications still see the call.
+		doAnswer(invocation ->
+		{
+			invocation.getArgument(0, Runnable.class).run();
+			return null;
+		}).when(clientThread).invoke(any(Runnable.class));
 	}
 
 	@Example

@@ -12,6 +12,7 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -49,6 +50,9 @@ public class AccessDeniedPlugin extends Plugin
 
 	@Inject
 	private ConfigManager configManager;
+
+	@Inject
+	private ClientThread clientThread;
 
 	private BossLocation currentLocation;
 
@@ -158,7 +162,7 @@ public class AccessDeniedPlugin extends Plugin
 		boolean valid = lastMissing.isEmpty();
 		if (!valid && lastResultWasValid)
 		{
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", describe(lastMissing), null);
+			sendChatMessage(describe(lastMissing));
 		}
 
 		lastResultWasValid = valid;
@@ -314,8 +318,7 @@ public class AccessDeniedPlugin extends Plugin
 
 		if (!wasGood)
 		{
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-				"Good raid found — reload protection active.", null);
+			sendChatMessage("Good raid found — reload protection active.");
 		}
 	}
 
@@ -343,12 +346,21 @@ public class AccessDeniedPlugin extends Plugin
 			.onClick(e -> releaseCoxScoutingLock());
 	}
 
+	/**
+	 * Chat output must happen on the client thread, but config edits arrive on the AWT event
+	 * thread — sending from there trips the client's own assertion and aborts the caller
+	 * mid-evaluation. invoke() still runs inline when already on the client thread.
+	 */
+	private void sendChatMessage(String message)
+	{
+		clientThread.invoke(() -> client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", message, null));
+	}
+
 	private void releaseCoxScoutingLock()
 	{
 		coxScoutingRaidGood = false;
 		coxScoutingReleasedLayout = currentCoxRaid != null ? currentCoxRaid.getLayout().toCodeString() : null;
-		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-			"Reload protection released — the reload option is available again.", null);
+		sendChatMessage("Reload protection released — the reload option is available again.");
 	}
 
 	private void removeGameObjectEntriesForObject(int objectId)
@@ -437,10 +449,10 @@ public class AccessDeniedPlugin extends Plugin
 
 			if (location.isEnabled(config) && !location.hasRequirements(config))
 			{
-				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", String.format(
+				sendChatMessage(String.format(
 					"<col=ff0000>Warning: %s validation is enabled but no requirements are configured. "
 						+ "Enable at least one requirement for validation to work.</col>",
-					location.getDisplayName()), null);
+					location.getDisplayName()));
 			}
 			return;
 		}

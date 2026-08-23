@@ -26,6 +26,7 @@ import org.mockito.MockitoAnnotations;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.function.Consumer;
 
 import static org.junit.Assert.*;
@@ -92,8 +93,7 @@ public class AccessDeniedPluginUnitTest
 
 		// Verify state is cleared
 		assertNull(getField(plugin, "currentLocation"));
-		assertNull(getField(plugin, "currentRegions"));
-		assertNull(getField(plugin, "lastResult"));
+		assertNull(getField(plugin, "lastMissing"));
 		assertTrue(getField(plugin, "lastResultWasValid"));
 	}
 
@@ -119,7 +119,8 @@ public class AccessDeniedPluginUnitTest
 	public void testStartUpMigrationResolvesCrossSpellbookLegacyConflictToArceuus() throws Exception
 	{
 		// Saved before the mutual-exclusion fix (commit 2666029): both an Arceuus and a
-		// Lunar toggle are enabled at once. The migration must not silently drop everything.
+		// Lunar toggle are enabled at once. The migration keeps the Arceuus half rather
+		// than dropping the requirement entirely.
 		when(configManager.getConfiguration("accessdenied", "coxRequireSpell")).thenReturn("true");
 		when(configManager.getConfiguration("accessdenied", "coxRequireDeathCharge")).thenReturn("false");
 		when(configManager.getConfiguration("accessdenied", "coxRequireHumidify")).thenReturn("true");
@@ -129,7 +130,6 @@ public class AccessDeniedPluginUnitTest
 		plugin.startUp();
 
 		verify(configManager).setConfiguration("accessdenied", "coxSpellRequirement", CoxSpellRequirement.THRALLS);
-		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""), anyString(), isNull());
 		verify(configManager).unsetConfiguration("accessdenied", "coxRequireSpell");
 		verify(configManager).unsetConfiguration("accessdenied", "coxRequireDeathCharge");
 		verify(configManager).unsetConfiguration("accessdenied", "coxRequireHumidify");
@@ -179,8 +179,7 @@ public class AccessDeniedPluginUnitTest
 
 		// Verify state is cleared
 		assertNull(getField(plugin, "currentLocation"));
-		assertNull(getField(plugin, "currentRegions"));
-		assertNull(getField(plugin, "lastResult"));
+		assertNull(getField(plugin, "lastMissing"));
 		assertTrue(getField(plugin, "lastResultWasValid"));
 	}
 
@@ -223,114 +222,16 @@ public class AccessDeniedPluginUnitTest
 	}
 
 	@Test
-	public void testRegionsEqualWithSameRegions() throws Exception
-	{
-		Method regionsEqual = plugin.getClass().getDeclaredMethod("regionsEqual", int[].class, int[].class);
-		regionsEqual.setAccessible(true);
-
-		int[] regions1 = {11601, 11602};
-		int[] regions2 = {11601, 11602};
-
-		boolean result = (boolean) regionsEqual.invoke(plugin, regions1, regions2);
-		assertTrue(result);
-	}
-
-	@Test
-	public void testRegionsEqualWithDifferentOrder() throws Exception
-	{
-		Method regionsEqual = plugin.getClass().getDeclaredMethod("regionsEqual", int[].class, int[].class);
-		regionsEqual.setAccessible(true);
-
-		int[] regions1 = {11601, 11602};
-		int[] regions2 = {11602, 11601};
-
-		boolean result = (boolean) regionsEqual.invoke(plugin, regions1, regions2);
-		assertTrue(result);
-	}
-
-	@Test
-	public void testRegionsEqualWithDifferentRegions() throws Exception
-	{
-		Method regionsEqual = plugin.getClass().getDeclaredMethod("regionsEqual", int[].class, int[].class);
-		regionsEqual.setAccessible(true);
-
-		int[] regions1 = {11601, 11602};
-		int[] regions2 = {11601, 11603};
-
-		boolean result = (boolean) regionsEqual.invoke(plugin, regions1, regions2);
-		assertFalse(result);
-	}
-
-	@Test
-	public void testRegionsEqualWithNulls() throws Exception
-	{
-		Method regionsEqual = plugin.getClass().getDeclaredMethod("regionsEqual", int[].class, int[].class);
-		regionsEqual.setAccessible(true);
-
-		boolean result1 = (boolean) regionsEqual.invoke(plugin, null, null);
-		assertTrue(result1);
-
-		int[] regions = {11601};
-		boolean result2 = (boolean) regionsEqual.invoke(plugin, regions, null);
-		assertFalse(result2);
-
-		boolean result3 = (boolean) regionsEqual.invoke(plugin, null, regions);
-		assertFalse(result3);
-	}
-
-	@Test
-	public void testIsValidationRequiredWithNexEnabled() throws Exception
-	{
-		when(config.nexEnabled()).thenReturn(true);
-		when(config.nexRequireSpell()).thenReturn(true);
-		when(config.nexRequireDeathCharge()).thenReturn(false);
-
-		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
-		isValidationRequired.setAccessible(true);
-
-		boolean result = (boolean) isValidationRequired.invoke(plugin, BossLocations.NEX);
-		assertTrue(result);
-	}
-
-	@Test
-	public void testIsValidationRequiredWithNexDisabled() throws Exception
-	{
-		when(config.nexEnabled()).thenReturn(false);
-		when(config.nexRequireSpell()).thenReturn(true);
-		when(config.nexRequireDeathCharge()).thenReturn(true);
-
-		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
-		isValidationRequired.setAccessible(true);
-
-		boolean result = (boolean) isValidationRequired.invoke(plugin, BossLocations.NEX);
-		assertFalse(result);
-	}
-
-	@Test
-	public void testIsValidationRequiredWithNoRequirements() throws Exception
-	{
-		when(config.nexEnabled()).thenReturn(true);
-		when(config.nexRequireSpell()).thenReturn(false);
-		when(config.nexRequireDeathCharge()).thenReturn(false);
-
-		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
-		isValidationRequired.setAccessible(true);
-
-		boolean result = (boolean) isValidationRequired.invoke(plugin, BossLocations.NEX);
-		assertFalse(result);
-	}
-
-	@Test
 	public void testValidateConfigurationShowsWarning() throws Exception
 	{
 		when(config.nexEnabled()).thenReturn(true);
 		when(config.nexRequireSpell()).thenReturn(false);
 		when(config.nexRequireDeathCharge()).thenReturn(false);
 
-		Method validateConfiguration = plugin.getClass().getDeclaredMethod("validateConfiguration", String.class);
-		validateConfiguration.setAccessible(true);
+		Method warnIfEnabled = plugin.getClass().getDeclaredMethod("warnIfEnabledWithoutRequirements", String.class);
+		warnIfEnabled.setAccessible(true);
 
-		validateConfiguration.invoke(plugin, "nexEnabled");
+		warnIfEnabled.invoke(plugin, "nexEnabled");
 
 		// Verify warning message was sent
 		ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
@@ -354,52 +255,13 @@ public class AccessDeniedPluginUnitTest
 		when(config.nexRequireSpell()).thenReturn(true);
 		when(config.nexRequireDeathCharge()).thenReturn(false);
 
-		Method validateConfiguration = plugin.getClass().getDeclaredMethod("validateConfiguration", String.class);
-		validateConfiguration.setAccessible(true);
+		Method warnIfEnabled = plugin.getClass().getDeclaredMethod("warnIfEnabledWithoutRequirements", String.class);
+		warnIfEnabled.setAccessible(true);
 
-		validateConfiguration.invoke(plugin, "nexEnabled");
+		warnIfEnabled.invoke(plugin, "nexEnabled");
 
 		// Verify no warning message was sent
 		verify(client, never()).addChatMessage(any(), any(), any(), any());
-	}
-
-	@Test
-	public void testIsValidationRequiredWithCoxHumidify() throws Exception
-	{
-		when(config.coxEnabled()).thenReturn(true);
-		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.HUMIDIFY);
-
-		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
-		isValidationRequired.setAccessible(true);
-
-		boolean result = (boolean) isValidationRequired.invoke(plugin, BossLocations.CHAMBERS_OF_XERIC);
-		assertTrue(result);
-	}
-
-	@Test
-	public void testIsValidationRequiredWithCoxVengeance() throws Exception
-	{
-		when(config.coxEnabled()).thenReturn(true);
-		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.VENGEANCE);
-
-		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
-		isValidationRequired.setAccessible(true);
-
-		boolean result = (boolean) isValidationRequired.invoke(plugin, BossLocations.CHAMBERS_OF_XERIC);
-		assertTrue(result);
-	}
-
-	@Test
-	public void testIsValidationRequiredWithCoxNoRequirements() throws Exception
-	{
-		when(config.coxEnabled()).thenReturn(true);
-		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.NONE);
-
-		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
-		isValidationRequired.setAccessible(true);
-
-		boolean result = (boolean) isValidationRequired.invoke(plugin, BossLocations.CHAMBERS_OF_XERIC);
-		assertFalse(result);
 	}
 
 	@Test
@@ -412,9 +274,9 @@ public class AccessDeniedPluginUnitTest
 		when(validator.hasDeathChargeRunes()).thenReturn(true);
 		when(validator.isOnArceuusSpellbook()).thenReturn(true);
 
-		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
+		List<String> missing = invokeFindMissing(BossLocation.COX);
 
-		assertTrue("Arceuus combo should pass when fully satisfied", result.isValid());
+		assertTrue("Arceuus combo should pass when fully satisfied", missing.isEmpty());
 		verify(validator).hasDeathChargeRunes();
 		verify(validator).isOnArceuusSpellbook();
 		// Lunar checks must not run for an Arceuus selection.
@@ -430,9 +292,9 @@ public class AccessDeniedPluginUnitTest
 		when(validator.hasBookOfTheDead()).thenReturn(true);
 		when(validator.isOnArceuusSpellbook()).thenReturn(false);
 
-		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
+		List<String> missing = invokeFindMissing(BossLocation.COX);
 
-		assertFalse("Should fail when not on the Arceuus spellbook", result.isValid());
+		assertFalse("Should fail when not on the Arceuus spellbook", missing.isEmpty());
 	}
 
 	@Test
@@ -442,9 +304,9 @@ public class AccessDeniedPluginUnitTest
 		when(validator.hasVengeanceRunes()).thenReturn(true);
 		when(validator.isOnLunarSpellbook()).thenReturn(true);
 
-		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
+		List<String> missing = invokeFindMissing(BossLocation.COX);
 
-		assertTrue("Vengeance should pass when runes and Lunar spellbook are present", result.isValid());
+		assertTrue("Vengeance should pass when runes and Lunar spellbook are present", missing.isEmpty());
 		verify(validator).hasVengeanceRunes();
 		verify(validator).isOnLunarSpellbook();
 		// Arceuus checks must not run for a Lunar selection.
@@ -458,9 +320,9 @@ public class AccessDeniedPluginUnitTest
 		// NONE with no bans is satisfiable and must not query any spell requirements.
 		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.NONE);
 
-		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
+		List<String> missing = invokeFindMissing(BossLocation.COX);
 
-		assertTrue("NONE with no bans should be valid", result.isValid());
+		assertTrue("NONE with no bans should be valid", missing.isEmpty());
 		verify(validator, never()).hasResurrectGreaterGhostRunes();
 		verify(validator, never()).hasDeathChargeRunes();
 		verify(validator, never()).hasHumidifyRunes();
@@ -469,11 +331,12 @@ public class AccessDeniedPluginUnitTest
 		verify(validator, never()).isOnLunarSpellbook();
 	}
 
-	private ValidationResult invokeValidateLocation(BossLocation location) throws Exception
+	@SuppressWarnings("unchecked")
+	private List<String> invokeFindMissing(BossLocation location) throws Exception
 	{
-		Method validate = plugin.getClass().getDeclaredMethod("validateLocationRequirements", BossLocation.class);
-		validate.setAccessible(true);
-		return (ValidationResult) validate.invoke(plugin, location);
+		Method findMissing = plugin.getClass().getDeclaredMethod("findMissingRequirements", BossLocation.class);
+		findMissing.setAccessible(true);
+		return (List<String>) findMissing.invoke(plugin, location);
 	}
 
 	@Test
@@ -509,8 +372,8 @@ public class AccessDeniedPluginUnitTest
 	{
 		// At a validated object on the arrival tick, lastResult is still null — the handler
 		// must validate on demand and, finding the state invalid, reorder the menu.
-		setField(plugin, "currentLocation", BossLocations.NEX);
-		setField(plugin, "lastResult", null);
+		setField(plugin, "currentLocation", BossLocation.NEX);
+		setField(plugin, "lastMissing", null);
 
 		when(config.nexEnabled()).thenReturn(true);
 		when(config.nexRequireSpell()).thenReturn(true);
@@ -524,13 +387,13 @@ public class AccessDeniedPluginUnitTest
 
 		MenuEntryAdded event = mock(MenuEntryAdded.class);
 		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
-		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+		when(event.getIdentifier()).thenReturn(BossLocation.NEX.getObjectId());
 
 		plugin.onMenuEntryAdded(event);
 
-		ValidationResult cached = getField(plugin, "lastResult");
+		List<String> cached = getField(plugin, "lastMissing");
 		assertNotNull("on-demand validation should cache a result", cached);
-		assertFalse("cached result should be invalid", cached.isValid());
+		assertFalse("cached result should be invalid", cached.isEmpty());
 		verify(menu).setMenuEntries(any());
 	}
 
@@ -540,8 +403,8 @@ public class AccessDeniedPluginUnitTest
 		// Regression test: onMenuEntryAdded's on-demand validation must not mark the
 		// invalid result as "already warned about" — onGameTick alone decides when the
 		// chat warning fires, so it must still fire on the very next tick.
-		setField(plugin, "currentLocation", BossLocations.NEX);
-		setField(plugin, "lastResult", null);
+		setField(plugin, "currentLocation", BossLocation.NEX);
+		setField(plugin, "lastMissing", null);
 		setField(plugin, "lastResultWasValid", true);
 
 		when(config.nexEnabled()).thenReturn(true);
@@ -556,7 +419,7 @@ public class AccessDeniedPluginUnitTest
 
 		MenuEntryAdded event = mock(MenuEntryAdded.class);
 		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
-		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+		when(event.getIdentifier()).thenReturn(BossLocation.NEX.getObjectId());
 
 		plugin.onMenuEntryAdded(event);
 
@@ -571,8 +434,8 @@ public class AccessDeniedPluginUnitTest
 	@Test
 	public void testOnMenuEntryAddedOnDemandDoesNotReorderWhenValid() throws Exception
 	{
-		setField(plugin, "currentLocation", BossLocations.NEX);
-		setField(plugin, "lastResult", null);
+		setField(plugin, "currentLocation", BossLocation.NEX);
+		setField(plugin, "lastMissing", null);
 
 		when(config.nexEnabled()).thenReturn(true);
 		when(config.nexRequireSpell()).thenReturn(true);
@@ -583,13 +446,13 @@ public class AccessDeniedPluginUnitTest
 
 		MenuEntryAdded event = mock(MenuEntryAdded.class);
 		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
-		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+		when(event.getIdentifier()).thenReturn(BossLocation.NEX.getObjectId());
 
 		plugin.onMenuEntryAdded(event);
 
-		ValidationResult cached = getField(plugin, "lastResult");
+		List<String> cached = getField(plugin, "lastMissing");
 		assertNotNull("on-demand validation should cache a result", cached);
-		assertTrue("cached result should be valid", cached.isValid());
+		assertTrue("cached result should be valid", cached.isEmpty());
 		verify(menu, never()).setMenuEntries(any());
 	}
 
@@ -598,8 +461,8 @@ public class AccessDeniedPluginUnitTest
 	{
 		// Doors inside the raid reuse the entrance object ID, so once the raid has started
 		// the handler must short-circuit before any swap.
-		setField(plugin, "currentLocation", BossLocations.CHAMBERS_OF_XERIC);
-		setField(plugin, "lastResult", null);
+		setField(plugin, "currentLocation", BossLocation.COX);
+		setField(plugin, "lastMissing", null);
 		when(client.getVarbitValue(VarbitID.RAIDS_CLIENT_PROGRESS)).thenReturn(1);
 
 		when(config.coxEnabled()).thenReturn(true);
@@ -607,11 +470,11 @@ public class AccessDeniedPluginUnitTest
 
 		MenuEntryAdded event = mock(MenuEntryAdded.class);
 		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
-		when(event.getIdentifier()).thenReturn(BossLocations.COX_OBJECT);
+		when(event.getIdentifier()).thenReturn(BossLocation.COX.getObjectId());
 
 		plugin.onMenuEntryAdded(event);
 
-		assertNull("no validation should occur during an active raid", getField(plugin, "lastResult"));
+		assertNull("no validation should occur during an active raid", getField(plugin, "lastMissing"));
 		verify(validator, never()).hasResurrectGreaterGhostRunes();
 		verify(menu, never()).setMenuEntries(any());
 	}
@@ -632,7 +495,7 @@ public class AccessDeniedPluginUnitTest
 
 		MenuEntry reloadEntry = mock(MenuEntry.class);
 		when(reloadEntry.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
-		when(reloadEntry.getIdentifier()).thenReturn(BossLocations.COX_RELOAD_OBJECT);
+		when(reloadEntry.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
 		MenuEntry walkEntry = mock(MenuEntry.class);
 		when(walkEntry.getType()).thenReturn(MenuAction.WALK);
 		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{walkEntry, reloadEntry});
@@ -642,7 +505,7 @@ public class AccessDeniedPluginUnitTest
 
 		MenuEntryAdded event = mock(MenuEntryAdded.class);
 		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
-		when(event.getIdentifier()).thenReturn(BossLocations.COX_RELOAD_OBJECT);
+		when(event.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
 
 		plugin.onMenuEntryAdded(event);
 
@@ -675,7 +538,7 @@ public class AccessDeniedPluginUnitTest
 
 		MenuEntryAdded event = mock(MenuEntryAdded.class);
 		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
-		when(event.getIdentifier()).thenReturn(BossLocations.COX_RELOAD_OBJECT);
+		when(event.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
 
 		plugin.onMenuEntryAdded(event);
 
@@ -686,8 +549,8 @@ public class AccessDeniedPluginUnitTest
 	public void testOnMenuEntryAddedStillSwapsInCoxLobbyBeforeRaidStarts() throws Exception
 	{
 		// Same object ID, raid not started: the entrance swap must still fire.
-		setField(plugin, "currentLocation", BossLocations.CHAMBERS_OF_XERIC);
-		setField(plugin, "lastResult", null);
+		setField(plugin, "currentLocation", BossLocation.COX);
+		setField(plugin, "lastMissing", null);
 		when(client.getVarbitValue(VarbitID.RAIDS_CLIENT_PROGRESS)).thenReturn(0);
 
 		when(config.coxEnabled()).thenReturn(true);
@@ -702,7 +565,7 @@ public class AccessDeniedPluginUnitTest
 
 		MenuEntryAdded event = mock(MenuEntryAdded.class);
 		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
-		when(event.getIdentifier()).thenReturn(BossLocations.COX_OBJECT);
+		when(event.getIdentifier()).thenReturn(BossLocation.COX.getObjectId());
 
 		plugin.onMenuEntryAdded(event);
 

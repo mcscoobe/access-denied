@@ -2,6 +2,8 @@ package com.osrs.accessdenied;
 
 import org.junit.Test;
 
+import java.util.List;
+
 import static org.junit.Assert.*;
 
 /**
@@ -131,9 +133,9 @@ public class CombinationRuneTest
 	@Test
 	public void getSubstitutesForRuneReturnsCorrectRunesForFire()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(FIRE_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(FIRE_RUNE_ID);
 		// Lava, Smoke, Steam all substitute for Fire
-		assertEquals(3, result.length);
+		assertEquals(3, result.size());
 		assertContains(result, CombinationRune.LAVA);
 		assertContains(result, CombinationRune.SMOKE);
 		assertContains(result, CombinationRune.STEAM);
@@ -142,9 +144,9 @@ public class CombinationRuneTest
 	@Test
 	public void getSubstitutesForRuneReturnsCorrectRunesForWater()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(WATER_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(WATER_RUNE_ID);
 		// Mist, Mud, Steam all substitute for Water
-		assertEquals(3, result.length);
+		assertEquals(3, result.size());
 		assertContains(result, CombinationRune.MIST);
 		assertContains(result, CombinationRune.MUD);
 		assertContains(result, CombinationRune.STEAM);
@@ -153,9 +155,9 @@ public class CombinationRuneTest
 	@Test
 	public void getSubstitutesForRuneReturnsCorrectRunesForEarth()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(EARTH_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(EARTH_RUNE_ID);
 		// Lava and Mud substitute for Earth
-		assertEquals(2, result.length);
+		assertEquals(2, result.size());
 		assertContains(result, CombinationRune.LAVA);
 		assertContains(result, CombinationRune.MUD);
 	}
@@ -163,9 +165,9 @@ public class CombinationRuneTest
 	@Test
 	public void getSubstitutesForRuneReturnsCorrectRunesForAir()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(AIR_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(AIR_RUNE_ID);
 		// Mist and Smoke substitute for Air
-		assertEquals(2, result.length);
+		assertEquals(2, result.size());
 		assertContains(result, CombinationRune.MIST);
 		assertContains(result, CombinationRune.SMOKE);
 	}
@@ -173,18 +175,18 @@ public class CombinationRuneTest
 	@Test
 	public void getSubstitutesForRuneReturnsCorrectRunesForSoul()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(SOUL_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(SOUL_RUNE_ID);
 		// Only Aether substitutes for Soul
-		assertEquals(1, result.length);
+		assertEquals(1, result.size());
 		assertContains(result, CombinationRune.AETHER);
 	}
 
 	@Test
 	public void getSubstitutesForRuneReturnsCorrectRunesForCosmic()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(COSMIC_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(COSMIC_RUNE_ID);
 		// Only Aether substitutes for Cosmic
-		assertEquals(1, result.length);
+		assertEquals(1, result.size());
 		assertContains(result, CombinationRune.AETHER);
 	}
 
@@ -192,8 +194,8 @@ public class CombinationRuneTest
 	public void getSubstitutesForRuneReturnsEmptyForUnsubstitutableRune()
 	{
 		// No combination rune substitutes for Death runes
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(DEATH_RUNE_ID);
-		assertEquals(0, result.length);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(DEATH_RUNE_ID);
+		assertEquals(0, result.size());
 	}
 
 	// -----------------------------------------------------------------------
@@ -216,12 +218,8 @@ public class CombinationRuneTest
 	// Helpers
 	// -----------------------------------------------------------------------
 
-	private void assertContains(CombinationRune[] array, CombinationRune expected)
+	private void assertContains(List<CombinationRune> runes, CombinationRune expected)
 	{
-		for (CombinationRune rune : array)
-		{
-			if (rune == expected) return;
-		}
-		fail("Expected " + expected + " to be present in result array");
+		assertTrue("Expected " + expected + " to be present in " + runes, runes.contains(expected));
 	}
 }

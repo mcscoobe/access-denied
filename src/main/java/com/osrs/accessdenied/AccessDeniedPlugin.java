@@ -25,7 +25,9 @@ import net.runelite.client.plugins.raids.events.RaidReset;
 import net.runelite.client.plugins.raids.events.RaidScouted;
 import net.runelite.client.plugins.raids.solver.Room;
 import net.runelite.client.util.Text;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Slf4j
@@ -36,25 +38,25 @@ public class AccessDeniedPlugin extends Plugin
 {
 	private static final String RELEASE_LOCK_OPTION = "Release raid lock";
 
-	@SuppressWarnings("unused")
 	@Inject
 	private Client client;
 
-	@SuppressWarnings("unused")
 	@Inject
 	private AccessDeniedConfig config;
 
-	@SuppressWarnings("unused")
 	@Inject
 	private PlayerStateValidator playerStateValidator;
 
-	@SuppressWarnings("unused")
 	@Inject
 	private ConfigManager configManager;
 
 	private BossLocation currentLocation;
-	private int[] currentRegions;
-	private ValidationResult lastResult;
+
+	/**
+	 * Requirements the player failed at {@link #currentLocation} as of the last check.
+	 * Null means "not checked yet", empty means everything is satisfied.
+	 */
+	private List<String> lastMissing;
 	private boolean lastResultWasValid = true;
 	private Raid currentCoxRaid;
 	private boolean coxScoutingRaidGood = false;
@@ -63,14 +65,24 @@ public class AccessDeniedPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		resetState();
+		migrateLegacyCoxSpellConfig();
+	}
+
+	@Override
+	protected void shutDown()
+	{
+		resetState();
+	}
+
+	private void resetState()
+	{
 		currentLocation = null;
-		currentRegions = null;
-		lastResult = null;
+		lastMissing = null;
 		lastResultWasValid = true;
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
 		coxScoutingReleasedLayout = null;
-		migrateLegacyCoxSpellConfig();
 	}
 
 	/**
@@ -78,10 +90,7 @@ public class AccessDeniedPlugin extends Plugin
 	 * coxRequireDeathCharge/coxRequireHumidify/coxRequireVengeance) into the
 	 * coxSpellRequirement enum they were replaced by, then removes the old keys. Without
 	 * this, users who had one of those toggles enabled would silently lose their CoX
-	 * requirement on upgrade, since nothing reads the old keys any more. A saved state
-	 * spanning both spellbooks (only possible before commit 2666029 enforced mutual
-	 * exclusion) falls back to the Arceuus half with a chat warning, rather than being
-	 * silently dropped to no requirement at all.
+	 * requirement on upgrade, since nothing reads the old keys any more.
 	 */
 	private void migrateLegacyCoxSpellConfig()
 	{
@@ -97,42 +106,18 @@ public class AccessDeniedPlugin extends Plugin
 
 		if (configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxSpellRequirement") == null)
 		{
-			boolean thralls = Boolean.parseBoolean(legacySpell);
-			boolean deathCharge = Boolean.parseBoolean(legacyDeathCharge);
-			boolean humidify = Boolean.parseBoolean(legacyHumidify);
-			boolean vengeance = Boolean.parseBoolean(legacyVengeance);
-
-			CoxSpellRequirement migrated = CoxSpellRequirement.fromLegacyFlags(thralls, deathCharge, humidify, vengeance);
-			if (migrated == null)
-			{
-				// Saved before spellbook conflicts were resolved (commit 2666029) and never
-				// re-touched since, so both groups are still enabled. Keep the Arceuus half
-				// and tell the player, rather than silently dropping the whole requirement.
-				migrated = CoxSpellRequirement.fromLegacyFlags(thralls, deathCharge, false, false);
-				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-					"<col=ff0000>Chambers of Xeric had conflicting spell requirements saved from an "
-					+ "older version (both Arceuus and Lunar spells required). Kept the Arceuus "
-					+ "requirement (" + migrated + ") — check the Access Denied config panel.</col>", null);
-			}
-			configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxSpellRequirement", migrated);
+			configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxSpellRequirement",
+				CoxSpellRequirement.fromLegacyFlags(
+					Boolean.parseBoolean(legacySpell),
+					Boolean.parseBoolean(legacyDeathCharge),
+					Boolean.parseBoolean(legacyHumidify),
+					Boolean.parseBoolean(legacyVengeance)));
 		}
 
 		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireSpell");
 		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireDeathCharge");
 		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireHumidify");
 		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireVengeance");
-	}
-
-	@Override
-	protected void shutDown()
-	{
-		currentLocation = null;
-		currentRegions = null;
-		lastResult = null;
-		lastResultWasValid = true;
-		currentCoxRaid = null;
-		coxScoutingRaidGood = false;
-		coxScoutingReleasedLayout = null;
 	}
 
 	@Subscribe
@@ -148,66 +133,44 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		int[] newRegions = client.getTopLevelWorldView().getMapRegions();
-
-		if (regionsEqual(currentRegions, newRegions))
-		{
-			return;
-		}
-
-		currentRegions = newRegions;
-		BossLocation newLocation = BossLocations.findByAnyRegion(newRegions);
+		BossLocation newLocation = BossLocation.findByRegions(client.getTopLevelWorldView().getMapRegions());
 
 		if (newLocation != currentLocation)
 		{
 			currentLocation = newLocation;
-			lastResult = null;
+			lastMissing = null;
 			lastResultWasValid = true;
 		}
 	}
 
-	@SuppressWarnings("unused")
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		if (coxRaidInProgress() || !isValidationRequired(currentLocation))
+		if (coxRaidInProgress() || currentLocation == null || !currentLocation.requiresValidation(config))
 		{
-			lastResult = null;
+			lastMissing = null;
 			lastResultWasValid = true;
 			return;
 		}
 
-		ValidationResult result = validateLocationRequirements(currentLocation);
+		lastMissing = findMissingRequirements(currentLocation);
 
-		if (!result.isValid() && lastResultWasValid)
+		boolean valid = lastMissing.isEmpty();
+		if (!valid && lastResultWasValid)
 		{
-			String message = result.getFeedbackMessage();
-			if (message != null && !message.isEmpty())
-			{
-				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", message, null);
-			}
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", describe(lastMissing), null);
 		}
 
-		lastResultWasValid = result.isValid();
-		lastResult = result;
+		lastResultWasValid = valid;
 	}
 
-	@SuppressWarnings("unused")
 	@Subscribe
 	public void onRaidScouted(RaidScouted event)
 	{
 		currentCoxRaid = event.getRaid();
-		log.debug("RaidScouted: layout={}", currentCoxRaid.getLayout().toCodeString());
-		for (Room layoutRoom : currentCoxRaid.getLayout().getRooms())
-		{
-			RaidRoom room = currentCoxRaid.getRoom(layoutRoom.getPosition());
-			if (room == null) continue;
-			log.debug("  room position={} type={} name={}", layoutRoom.getPosition(), room.getType(), room.getName());
-		}
 		evaluateCoxScoutingRaid();
 	}
 
-	@SuppressWarnings("unused")
 	@Subscribe
 	public void onRaidReset(RaidReset event)
 	{
@@ -216,7 +179,6 @@ public class AccessDeniedPlugin extends Plugin
 		coxScoutingReleasedLayout = null;
 	}
 
-	@SuppressWarnings("unused")
 	@Subscribe
 	public void onProfileChanged(ProfileChanged event)
 	{
@@ -233,10 +195,10 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		validateConfiguration(event.getKey());
+		warnIfEnabledWithoutRequirements(event.getKey());
 
 		// Reset state so the next tick re-evaluates with the new config
-		lastResult = null;
+		lastMissing = null;
 		lastResultWasValid = true;
 
 		if (event.getKey().startsWith("coxScout"))
@@ -265,47 +227,37 @@ public class AccessDeniedPlugin extends Plugin
 
 		int objectId = event.getIdentifier();
 
-		if (currentLocation != null)
+		if (currentLocation != null && currentLocation.getObjectId() == objectId)
 		{
-			Integer validatedObjectId = BossLocations.getObjectForLocation(currentLocation);
-			if (validatedObjectId != null && validatedObjectId == objectId)
+			// The first menu open can happen before the first game tick has validated;
+			// compute on demand so right-clicking immediately on arrival is still protected.
+			// When validation isn't required, lastMissing stays null and this cheap
+			// requiresValidation check simply re-runs per event — onGameTick owns the
+			// cache lifecycle (it nulls lastMissing every tick when validation is off), so
+			// there is no cache to populate here. lastResultWasValid is intentionally left
+			// untouched: onGameTick alone decides whether the chat warning fires, so an
+			// invalid result computed here doesn't get treated as "already warned about".
+			if (lastMissing == null && currentLocation.requiresValidation(config))
 			{
-				// The first menu open can happen before the first game tick has validated;
-				// compute on demand so right-clicking immediately on arrival is still protected.
-				// When validation isn't required, lastResult stays null and this cheap
-				// isValidationRequired check simply re-runs per event — onGameTick owns the
-				// cache lifecycle (it nulls lastResult every tick when validation is off), so
-				// there is no cache to populate here. lastResultWasValid is intentionally left
-				// untouched: onGameTick alone decides whether the chat warning fires, so an
-				// invalid result computed here doesn't get treated as "already warned about".
-				if (lastResult == null && isValidationRequired(currentLocation))
-				{
-					lastResult = validateLocationRequirements(currentLocation);
-				}
+				lastMissing = findMissingRequirements(currentLocation);
+			}
 
-				if (lastResult != null && !lastResult.isValid())
-				{
-					reorderMenuToWalkHere(client.getMenu().getMenuEntries());
-					return;
-				}
+			if (lastMissing != null && !lastMissing.isEmpty())
+			{
+				reorderMenuToWalkHere(client.getMenu().getMenuEntries());
+				return;
 			}
 		}
 
-		if (objectId == BossLocations.COX_RELOAD_OBJECT)
+		if (objectId == BossLocation.COX_RELOAD_OBJECT && coxScoutingRaidGood)
 		{
-			log.debug("onMenuEntryAdded: reload object seen — coxScoutingRaidGood={}", coxScoutingRaidGood);
-			if (coxScoutingRaidGood)
-			{
-				removeGameObjectEntriesForObject(BossLocations.COX_RELOAD_OBJECT);
-				addReleaseLockEntry();
-			}
+			removeGameObjectEntriesForObject(BossLocation.COX_RELOAD_OBJECT);
+			addReleaseLockEntry();
 		}
 	}
 
 	private void evaluateCoxScoutingRaid()
 	{
-		log.debug("evaluateCoxScoutingRaid: enabled={} raidPresent={}", config.coxScoutingEnabled(), currentCoxRaid != null);
-
 		if (!config.coxScoutingEnabled() || currentCoxRaid == null)
 		{
 			coxScoutingRaidGood = false;
@@ -322,11 +274,8 @@ public class AccessDeniedPlugin extends Plugin
 		Set<String> roomWhitelist = new HashSet<>(Text.fromCSV(config.coxScoutWhitelistedRooms().toLowerCase()));
 		Set<String> layoutWhitelist = new HashSet<>(Text.fromCSV(config.coxScoutWhitelistedLayouts().toLowerCase()));
 
-		log.debug("evaluateCoxScoutingRaid: roomWhitelist={} layoutWhitelist={}", roomWhitelist, layoutWhitelist);
-
 		if (roomWhitelist.isEmpty() && layoutWhitelist.isEmpty())
 		{
-			log.debug("evaluateCoxScoutingRaid: both lists empty — no protection");
 			coxScoutingRaidGood = false;
 			return;
 		}
@@ -340,12 +289,9 @@ public class AccessDeniedPlugin extends Plugin
 				{
 					continue;
 				}
-				String roomName = room.getName().toLowerCase();
-				boolean inWhitelist = roomWhitelist.contains(roomName);
-				log.debug("evaluateCoxScoutingRaid: room '{}' (type={}) inWhitelist={}", roomName, room.getType(), inWhitelist);
-				if (!inWhitelist)
+				if (!roomWhitelist.contains(room.getName().toLowerCase()))
 				{
-					log.debug("evaluateCoxScoutingRaid: room '{}' not in whitelist — raid is bad", roomName);
+					log.debug("evaluateCoxScoutingRaid: room '{}' not in whitelist — raid is bad", room.getName());
 					coxScoutingRaidGood = false;
 					return;
 				}
@@ -355,9 +301,7 @@ public class AccessDeniedPlugin extends Plugin
 		if (!layoutWhitelist.isEmpty())
 		{
 			String layoutCode = currentCoxRaid.getLayout().toCodeString().toLowerCase();
-			boolean inWhitelist = layoutWhitelist.contains(layoutCode);
-			log.debug("evaluateCoxScoutingRaid: layoutCode='{}' inWhitelist={}", layoutCode, inWhitelist);
-			if (!inWhitelist)
+			if (!layoutWhitelist.contains(layoutCode))
 			{
 				log.debug("evaluateCoxScoutingRaid: layout '{}' not in whitelist — raid is bad", layoutCode);
 				coxScoutingRaidGood = false;
@@ -367,7 +311,6 @@ public class AccessDeniedPlugin extends Plugin
 
 		boolean wasGood = coxScoutingRaidGood;
 		coxScoutingRaidGood = true;
-		log.debug("evaluateCoxScoutingRaid: raid is GOOD (wasGood={})", wasGood);
 
 		if (!wasGood)
 		{
@@ -416,14 +359,13 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		java.util.List<MenuEntry> kept = new java.util.ArrayList<>();
+		List<MenuEntry> kept = new ArrayList<>();
 		for (MenuEntry entry : entries)
 		{
 			if (entry.getIdentifier() == objectId
 				&& (entry.getType() == MenuAction.GAME_OBJECT_FIRST_OPTION
 					|| entry.getType() == MenuAction.GAME_OBJECT_SECOND_OPTION))
 			{
-				log.debug("removeGameObjectEntries: removing '{}' for object {}", entry.getOption(), objectId);
 				continue;
 			}
 			kept.add(entry);
@@ -439,14 +381,12 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		if (menuEntries == null || menuEntries.length == 0)
 		{
-			log.debug("reorderMenuToWalkHere: no menu entries");
 			return;
 		}
 
 		int walkHereIndex = -1;
 		for (int i = 0; i < menuEntries.length; i++)
 		{
-			log.debug("reorderMenuToWalkHere: entry[{}] type={} option='{}'", i, menuEntries[i].getType(), menuEntries[i].getOption());
 			if (menuEntries[i].getType() == MenuAction.WALK)
 			{
 				walkHereIndex = i;
@@ -454,15 +394,10 @@ public class AccessDeniedPlugin extends Plugin
 			}
 		}
 
-		if (walkHereIndex == -1)
+		// The last entry is the left-click option, so an absent or already-last Walk Here
+		// leaves nothing to do.
+		if (walkHereIndex == -1 || walkHereIndex == menuEntries.length - 1)
 		{
-			log.debug("reorderMenuToWalkHere: no Walk Here entry found");
-			return;
-		}
-
-		if (walkHereIndex == menuEntries.length - 1)
-		{
-			log.debug("reorderMenuToWalkHere: Walk Here is already the top option");
 			return;
 		}
 
@@ -482,81 +417,77 @@ public class AccessDeniedPlugin extends Plugin
 		client.getMenu().setMenuEntries(reordered);
 	}
 
-	private void validateConfiguration(String configKey)
+	/**
+	 * Warns when a location's master toggle is switched on but nothing below it is, which
+	 * would otherwise look enabled while validating nothing.
+	 */
+	private void warnIfEnabledWithoutRequirements(String configKey)
 	{
-		// No-requirements warning — fires only when a master Enabled toggle is turned on
 		if (!configKey.endsWith("Enabled"))
 		{
 			return;
 		}
 
-		String locationName = null;
-		boolean hasRequirements = false;
+		for (BossLocation location : BossLocation.values())
+		{
+			if (!configKey.equals(location.getConfigPrefix() + "Enabled"))
+			{
+				continue;
+			}
 
-		if ("nexEnabled".equals(configKey) && config.nexEnabled())
-		{
-			locationName = "Nex";
-			hasRequirements = config.nexRequireSpell() || config.nexRequireDeathCharge()
-				|| config.nexBanChugJug() || config.nexBanSaturatedHeart();
-		}
-		else if ("tobEnabled".equals(configKey) && config.tobEnabled())
-		{
-			locationName = "Theatre of Blood";
-			hasRequirements = config.tobRequireSpell() || config.tobRequireDeathCharge()
-				|| config.tobBanChugJug() || config.tobBanSaturatedHeart();
-		}
-		else if ("toaEnabled".equals(configKey) && config.toaEnabled())
-		{
-			locationName = "Tombs of Amascut";
-			hasRequirements = config.toaRequireSpell() || config.toaRequireDeathCharge()
-				|| config.toaBanChugJug() || config.toaBanSaturatedHeart();
-		}
-		else if ("coxEnabled".equals(configKey) && config.coxEnabled())
-		{
-			locationName = "Chambers of Xeric";
-			hasRequirements = config.coxSpellRequirement() != CoxSpellRequirement.NONE
-				|| config.coxBanChugJug() || config.coxBanSaturatedHeart();
-		}
-		else if ("infernoEnabled".equals(configKey) && config.infernoEnabled())
-		{
-			locationName = "Inferno";
-			hasRequirements = config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage()
-				|| config.infernoBanChugJug() || config.infernoBanSaturatedHeart();
-		}
-
-		if (locationName != null && !hasRequirements)
-		{
-			String warningMessage = String.format(
-				"<col=ff0000>Warning: %s validation is enabled but no requirements are configured. " +
-				"Enable at least one requirement for validation to work.</col>",
-				locationName
-			);
-			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", warningMessage, null);
+			if (location.isEnabled(config) && !location.hasRequirements(config))
+			{
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", String.format(
+					"<col=ff0000>Warning: %s validation is enabled but no requirements are configured. "
+						+ "Enable at least one requirement for validation to work.</col>",
+					location.getDisplayName()), null);
+			}
+			return;
 		}
 	}
 
-	private ValidationResult validateLocationRequirements(BossLocation location)
+	private List<String> findMissingRequirements(BossLocation location)
 	{
-		switch (location.getId())
+		List<String> missing = new ArrayList<>();
+
+		switch (location)
 		{
-			case "nex":
-				return validateRaidRequirements(config.nexRequireSpell(), config.nexRequireDeathCharge(), config.nexBanChugJug(), config.nexBanSaturatedHeart());
-			case "tob":
-				return validateRaidRequirements(config.tobRequireSpell(), config.tobRequireDeathCharge(), config.tobBanChugJug(), config.tobBanSaturatedHeart());
-			case "toa":
-				return validateRaidRequirements(config.toaRequireSpell(), config.toaRequireDeathCharge(), config.toaBanChugJug(), config.toaBanSaturatedHeart());
-			case "cox":
-				return validateCoxRequirements();
-			case "inferno":
-				return validateInfernoRequirements();
-			default:
-				return new ValidationResult(true, java.util.Collections.emptySet(), "No validation logic implemented");
+			case NEX:
+				addArceuusChecks(missing, config.nexRequireSpell(), config.nexRequireDeathCharge());
+				break;
+			case TOB:
+				addArceuusChecks(missing, config.tobRequireSpell(), config.tobRequireDeathCharge());
+				break;
+			case TOA:
+				addArceuusChecks(missing, config.toaRequireSpell(), config.toaRequireDeathCharge());
+				break;
+			case COX:
+				addCoxSpellChecks(missing);
+				break;
+			case INFERNO:
+				addInfernoChecks(missing);
+				break;
 		}
+
+		if (location.bansChugJug(config) && playerStateValidator.hasChugJug())
+		{
+			missing.add("remove " + location.getChugJugLabel());
+		}
+
+		if (location.bansSaturatedHeart(config) && playerStateValidator.hasSaturatedHeart())
+		{
+			missing.add("remove Saturated Heart");
+		}
+
+		return missing;
 	}
 
-	private ValidationResult validateRaidRequirements(boolean requireThralls, boolean requireDeathCharge, boolean banChugJug, boolean banSaturatedHeart)
+	private void addArceuusChecks(List<String> missing, boolean requireThralls, boolean requireDeathCharge)
 	{
-		java.util.List<String> missing = new java.util.ArrayList<>();
+		if (!requireThralls && !requireDeathCharge)
+		{
+			return;
+		}
 
 		if (requireThralls)
 		{
@@ -564,105 +495,63 @@ public class AccessDeniedPlugin extends Plugin
 			if (!playerStateValidator.hasBookOfTheDead()) { missing.add("Book of the Dead"); }
 		}
 
-		if (requireDeathCharge)
+		if (requireDeathCharge && !playerStateValidator.hasDeathChargeRunes())
 		{
-			if (!playerStateValidator.hasDeathChargeRunes()) { missing.add("runes for Death Charge"); }
+			missing.add("runes for Death Charge");
 		}
 
-		if (requireThralls || requireDeathCharge)
+		if (!playerStateValidator.isOnArceuusSpellbook())
 		{
-			if (!playerStateValidator.isOnArceuusSpellbook()) { missing.add("Arceuus spellbook"); }
-		}
-
-		addBanChecks(missing, banChugJug, "remove Chug Jug", banSaturatedHeart);
-
-		return buildValidationResult(missing);
-	}
-
-	private ValidationResult validateCoxRequirements()
-	{
-		java.util.List<String> missing = new java.util.ArrayList<>();
-
-		CoxSpellRequirement spellRequirement = config.coxSpellRequirement();
-
-		if (spellRequirement.requiresArceuus())
-		{
-			if (spellRequirement.requiresThralls())
-			{
-				if (!playerStateValidator.hasResurrectGreaterGhostRunes()) { missing.add("runes for Thralls"); }
-				if (!playerStateValidator.hasBookOfTheDead()) { missing.add("Book of the Dead"); }
-			}
-			if (spellRequirement.requiresDeathCharge())
-			{
-				if (!playerStateValidator.hasDeathChargeRunes()) { missing.add("runes for Death Charge"); }
-			}
-			if (!playerStateValidator.isOnArceuusSpellbook()) { missing.add("Arceuus spellbook"); }
-		}
-
-		if (spellRequirement.requiresLunar())
-		{
-			if (spellRequirement.requiresHumidify())
-			{
-				if (!playerStateValidator.hasHumidifyRunes()) { missing.add("runes for Humidify"); }
-			}
-			if (spellRequirement.requiresVengeance())
-			{
-				if (!playerStateValidator.hasVengeanceRunes()) { missing.add("runes for Vengeance"); }
-			}
-			if (!playerStateValidator.isOnLunarSpellbook()) { missing.add("Lunar spellbook"); }
-		}
-
-		addBanChecks(missing, config.coxBanChugJug(), "remove Chugging Barrel", config.coxBanSaturatedHeart());
-
-		return buildValidationResult(missing);
-	}
-
-	private ValidationResult validateInfernoRequirements()
-	{
-		java.util.List<String> missing = new java.util.ArrayList<>();
-
-		if (config.infernoRequireIceBarrage())
-		{
-			if (!playerStateValidator.hasIceBarrageRunes()) { missing.add("runes for Ice Barrage"); }
-		}
-
-		if (config.infernoRequireBloodBarrage())
-		{
-			if (!playerStateValidator.hasBloodBarrageRunes()) { missing.add("runes for Blood Barrage"); }
-		}
-
-		if (config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage())
-		{
-			if (!playerStateValidator.isOnAncientSpellbook()) { missing.add("Ancient spellbook"); }
-		}
-
-		addBanChecks(missing, config.infernoBanChugJug(), "remove Chug Jug", config.infernoBanSaturatedHeart());
-
-		return buildValidationResult(missing);
-	}
-
-	private void addBanChecks(java.util.List<String> missing, boolean banChugJug, String chugJugMissingMessage, boolean banSaturatedHeart)
-	{
-		if (banChugJug && playerStateValidator.hasChugJug())
-		{
-			missing.add(chugJugMissingMessage);
-		}
-
-		if (banSaturatedHeart && playerStateValidator.hasSaturatedHeart())
-		{
-			missing.add("remove Saturated Heart");
+			missing.add("Arceuus spellbook");
 		}
 	}
 
-	private ValidationResult buildValidationResult(java.util.List<String> missing)
+	private void addCoxSpellChecks(List<String> missing)
 	{
-		if (missing.isEmpty())
+		CoxSpellRequirement requirement = config.coxSpellRequirement();
+
+		addArceuusChecks(missing, requirement.requiresThralls(), requirement.requiresDeathCharge());
+
+		if (!requirement.requiresLunar())
 		{
-			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
+			return;
 		}
 
-		String msg = "Missing: " + String.join(", ", missing);
-		return new ValidationResult(false, java.util.Collections.singleton(msg), msg);
+		if (requirement.requiresHumidify() && !playerStateValidator.hasHumidifyRunes())
+		{
+			missing.add("runes for Humidify");
+		}
+
+		if (requirement.requiresVengeance() && !playerStateValidator.hasVengeanceRunes())
+		{
+			missing.add("runes for Vengeance");
+		}
+
+		if (!playerStateValidator.isOnLunarSpellbook())
+		{
+			missing.add("Lunar spellbook");
+		}
+	}
+
+	private void addInfernoChecks(List<String> missing)
+	{
+		boolean ice = config.infernoRequireIceBarrage();
+		boolean blood = config.infernoRequireBloodBarrage();
+
+		if (ice && !playerStateValidator.hasIceBarrageRunes())
+		{
+			missing.add("runes for Ice Barrage");
+		}
+
+		if (blood && !playerStateValidator.hasBloodBarrageRunes())
+		{
+			missing.add("runes for Blood Barrage");
+		}
+
+		if ((ice || blood) && !playerStateValidator.isOnAncientSpellbook())
+		{
+			missing.add("Ancient spellbook");
+		}
 	}
 
 	/**
@@ -673,54 +562,15 @@ public class AccessDeniedPlugin extends Plugin
 	 */
 	private boolean coxRaidInProgress()
 	{
-		return currentLocation != null
-			&& "cox".equals(currentLocation.getId())
+		return currentLocation == BossLocation.COX
 			&& client.getVarbitValue(VarbitID.RAIDS_CLIENT_PROGRESS) > 0;
 	}
 
-	private boolean isValidationRequired(BossLocation location)
+	private static String describe(List<String> missing)
 	{
-		if (location == null)
-		{
-			return false;
-		}
-
-		switch (location.getId())
-		{
-			case "nex":
-				return config.nexEnabled() && (config.nexRequireSpell() || config.nexRequireDeathCharge()
-					|| config.nexBanChugJug() || config.nexBanSaturatedHeart());
-			case "tob":
-				return config.tobEnabled() && (config.tobRequireSpell() || config.tobRequireDeathCharge()
-					|| config.tobBanChugJug() || config.tobBanSaturatedHeart());
-			case "toa":
-				return config.toaEnabled() && (config.toaRequireSpell() || config.toaRequireDeathCharge()
-					|| config.toaBanChugJug() || config.toaBanSaturatedHeart());
-			case "cox":
-				return config.coxEnabled() && (config.coxSpellRequirement() != CoxSpellRequirement.NONE
-					|| config.coxBanChugJug() || config.coxBanSaturatedHeart());
-			case "inferno":
-				return config.infernoEnabled() && (config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage()
-					|| config.infernoBanChugJug() || config.infernoBanSaturatedHeart());
-			default:
-				return false;
-		}
+		return "Missing: " + String.join(", ", missing);
 	}
 
-	private boolean regionsEqual(int[] regions1, int[] regions2)
-	{
-		if (regions1 == null && regions2 == null) return true;
-		if (regions1 == null || regions2 == null) return false;
-		if (regions1.length != regions2.length) return false;
-
-		java.util.Set<Integer> set1 = new java.util.HashSet<>();
-		java.util.Set<Integer> set2 = new java.util.HashSet<>();
-		for (int r : regions1) set1.add(r);
-		for (int r : regions2) set2.add(r);
-		return set1.equals(set2);
-	}
-
-	@SuppressWarnings("unused")
 	@Provides
 	AccessDeniedConfig provideConfig(ConfigManager configManager)
 	{

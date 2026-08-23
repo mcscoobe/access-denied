@@ -8,10 +8,10 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
-import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -56,7 +56,6 @@ public class AccessDeniedPlugin extends Plugin
 	private int[] currentRegions;
 	private ValidationResult lastResult;
 	private boolean lastResultWasValid = true;
-	private boolean coxRaidActive = false;
 	private Raid currentCoxRaid;
 	private boolean coxScoutingRaidGood = false;
 	private String coxScoutingReleasedLayout;
@@ -68,7 +67,6 @@ public class AccessDeniedPlugin extends Plugin
 		currentRegions = null;
 		lastResult = null;
 		lastResultWasValid = true;
-		coxRaidActive = false;
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
 		coxScoutingReleasedLayout = null;
@@ -132,7 +130,6 @@ public class AccessDeniedPlugin extends Plugin
 		currentRegions = null;
 		lastResult = null;
 		lastResultWasValid = true;
-		coxRaidActive = false;
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
 		coxScoutingReleasedLayout = null;
@@ -166,7 +163,6 @@ public class AccessDeniedPlugin extends Plugin
 			currentLocation = newLocation;
 			lastResult = null;
 			lastResultWasValid = true;
-			coxRaidActive = false;
 		}
 	}
 
@@ -174,7 +170,7 @@ public class AccessDeniedPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		if (coxRaidActive || !isValidationRequired(currentLocation))
+		if (coxRaidInProgress() || !isValidationRequired(currentLocation))
 		{
 			lastResult = null;
 			lastResultWasValid = true;
@@ -194,25 +190,6 @@ public class AccessDeniedPlugin extends Plugin
 
 		lastResultWasValid = result.isValid();
 		lastResult = result;
-	}
-
-	@SuppressWarnings("unused")
-	@Subscribe
-	public void onChatMessage(ChatMessage event)
-	{
-		if (currentLocation == null || !currentLocation.getId().equals("cox"))
-		{
-			return;
-		}
-
-		if (event.getMessage().contains("The raid has begun!"))
-		{
-			log.debug("CoX raid started — suppressing menu swaps and validation");
-			coxRaidActive = true;
-			coxScoutingRaidGood = false;
-			lastResult = null;
-			lastResultWasValid = true;
-		}
 	}
 
 	@SuppressWarnings("unused")
@@ -278,9 +255,17 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
+		// Inside a running raid the entrance object ID is reused by ordinary doors, so
+		// every swap from here on would land on the wrong door. Nothing needs blocking
+		// once the raid has begun anyway.
+		if (coxRaidInProgress())
+		{
+			return;
+		}
+
 		int objectId = event.getIdentifier();
 
-		if (!coxRaidActive && currentLocation != null)
+		if (currentLocation != null)
 		{
 			Integer validatedObjectId = BossLocations.getObjectForLocation(currentLocation);
 			if (validatedObjectId != null && validatedObjectId == objectId)
@@ -678,6 +663,19 @@ public class AccessDeniedPlugin extends Plugin
 
 		String msg = "Missing: " + String.join(", ", missing);
 		return new ValidationResult(false, java.util.Collections.singleton(msg), msg);
+	}
+
+	/**
+	 * True once a Chambers of Xeric raid has started. Read from the varbit rather than
+	 * tracked from the "The raid has begun!" message: map region churn while moving
+	 * between rooms (and any relog inside the raid) used to clear a tracked flag, which
+	 * brought the entrance swap back on in-raid doors sharing the entrance object ID.
+	 */
+	private boolean coxRaidInProgress()
+	{
+		return currentLocation != null
+			&& "cox".equals(currentLocation.getId())
+			&& client.getVarbitValue(VarbitID.RAIDS_CLIENT_PROGRESS) > 0;
 	}
 
 	private boolean isValidationRequired(BossLocation location)

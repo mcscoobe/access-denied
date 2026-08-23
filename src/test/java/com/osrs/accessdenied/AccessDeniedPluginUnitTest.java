@@ -11,6 +11,7 @@ import net.runelite.api.WorldView;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.ProfileChanged;
@@ -595,17 +596,18 @@ public class AccessDeniedPluginUnitTest
 	@Test
 	public void testOnMenuEntryAddedSkipsOnDemandDuringActiveCoxRaid() throws Exception
 	{
-		// An active CoX raid short-circuits the on-demand block entirely.
-		setField(plugin, "currentLocation", BossLocations.NEX);
+		// Doors inside the raid reuse the entrance object ID, so once the raid has started
+		// the handler must short-circuit before any swap.
+		setField(plugin, "currentLocation", BossLocations.CHAMBERS_OF_XERIC);
 		setField(plugin, "lastResult", null);
-		setField(plugin, "coxRaidActive", true);
+		when(client.getVarbitValue(VarbitID.RAIDS_CLIENT_PROGRESS)).thenReturn(1);
 
-		when(config.nexEnabled()).thenReturn(true);
-		when(config.nexRequireSpell()).thenReturn(true);
+		when(config.coxEnabled()).thenReturn(true);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.THRALLS);
 
 		MenuEntryAdded event = mock(MenuEntryAdded.class);
 		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
-		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+		when(event.getIdentifier()).thenReturn(BossLocations.COX_OBJECT);
 
 		plugin.onMenuEntryAdded(event);
 
@@ -678,6 +680,36 @@ public class AccessDeniedPluginUnitTest
 		plugin.onMenuEntryAdded(event);
 
 		verify(menu, never()).createMenuEntry(anyInt());
+	}
+
+	@Test
+	public void testOnMenuEntryAddedStillSwapsInCoxLobbyBeforeRaidStarts() throws Exception
+	{
+		// Same object ID, raid not started: the entrance swap must still fire.
+		setField(plugin, "currentLocation", BossLocations.CHAMBERS_OF_XERIC);
+		setField(plugin, "lastResult", null);
+		when(client.getVarbitValue(VarbitID.RAIDS_CLIENT_PROGRESS)).thenReturn(0);
+
+		when(config.coxEnabled()).thenReturn(true);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.THRALLS);
+		when(validator.hasResurrectGreaterGhostRunes()).thenReturn(false);
+
+		MenuEntry walkHere = mock(MenuEntry.class);
+		when(walkHere.getType()).thenReturn(MenuAction.WALK);
+		MenuEntry enter = mock(MenuEntry.class);
+		when(enter.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{walkHere, enter});
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.COX_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		ArgumentCaptor<MenuEntry[]> captor = ArgumentCaptor.forClass(MenuEntry[].class);
+		verify(menu).setMenuEntries(captor.capture());
+		MenuEntry[] reordered = captor.getValue();
+		assertSame("Walk Here should be the top option", walkHere, reordered[reordered.length - 1]);
 	}
 
 	// Helper methods for reflection

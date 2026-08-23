@@ -1,99 +1,101 @@
 package com.osrs.accessdenied;
 
-import org.junit.Test;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
+import net.jqwik.api.Example;
 
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for BossLocation class.
+ * Unit tests for the BossLocation enum: region lookup, guarded object IDs, and the
+ * config-driven requirement predicates.
  */
-public class BossLocationTest
+class BossLocationTest
 {
-	@Test
-	public void testBossLocationCreation()
+	@Example
+	void findsEachLocationByItsRegions()
 	{
-		Set<Integer> regions = new HashSet<>(Arrays.asList(11601, 11602));
-		BossLocation location = new BossLocation("test", "Test Location", regions);
-
-		assertEquals("test", location.getId());
-		assertEquals("Test Location", location.getDisplayName());
-		assertEquals(2, location.getRegionIds().size());
-		assertTrue(location.getRegionIds().contains(11601));
-		assertTrue(location.getRegionIds().contains(11602));
+		assertThat(BossLocation.findByRegions(new int[]{11601})).isSameAs(BossLocation.NEX);
+		assertThat(BossLocation.findByRegions(new int[]{14642})).isSameAs(BossLocation.TOB);
+		assertThat(BossLocation.findByRegions(new int[]{13454})).isSameAs(BossLocation.TOA);
+		assertThat(BossLocation.findByRegions(new int[]{13393})).isSameAs(BossLocation.COX);
+		assertThat(BossLocation.findByRegions(new int[]{13137})).isSameAs(BossLocation.COX);
+		assertThat(BossLocation.findByRegions(new int[]{10063})).isSameAs(BossLocation.INFERNO);
+		assertThat(BossLocation.findByRegions(new int[]{9807})).isSameAs(BossLocation.INFERNO);
 	}
 
-	@Test
-	public void testIsInRegion()
+	@Example
+	void findsLocationAmongUnrelatedRegions()
 	{
-		Set<Integer> regions = Collections.singleton(11601);
-		BossLocation location = new BossLocation("nex", "Nex", regions);
-
-		assertTrue(location.isInRegion(11601));
-		assertFalse(location.isInRegion(11602));
-		assertFalse(location.isInRegion(0));
+		assertThat(BossLocation.findByRegions(new int[]{99999, 11601, 12345})).isSameAs(BossLocation.NEX);
 	}
 
-	@Test
-	public void testIsInRegionWithMultipleRegions()
+	@Example
+	void findsNothingForUnknownOrMissingRegions()
 	{
-		Set<Integer> regions = new HashSet<>(Arrays.asList(13393, 13137));
-		BossLocation location = new BossLocation("cox", "Chambers of Xeric", regions);
-
-		assertTrue(location.isInRegion(13393));
-		assertTrue(location.isInRegion(13137));
-		assertFalse(location.isInRegion(13394));
+		assertThat(BossLocation.findByRegions(new int[]{99999})).isNull();
+		assertThat(BossLocation.findByRegions(new int[0])).isNull();
+		assertThat(BossLocation.findByRegions(null)).isNull();
 	}
 
-	@Test
-	public void testIsInAnyRegion()
+	@Example
+	void guardsTheExpectedObjectIds()
 	{
-		Set<Integer> regions = Collections.singleton(11601);
-		BossLocation location = new BossLocation("nex", "Nex", regions);
-
-		int[] testRegions = {11600, 11601, 11602};
-		assertTrue(location.isInAnyRegion(testRegions));
+		assertThat(BossLocation.NEX.getObjectId()).isEqualTo(42967);
+		assertThat(BossLocation.TOB.getObjectId()).isEqualTo(32653);
+		assertThat(BossLocation.TOA.getObjectId()).isEqualTo(46089);
+		assertThat(BossLocation.COX.getObjectId()).isEqualTo(29789);
+		assertThat(BossLocation.INFERNO.getObjectId()).isEqualTo(30352);
+		assertThat(BossLocation.COX_RELOAD_OBJECT).isEqualTo(49999);
 	}
 
-	@Test
-	public void testIsInAnyRegionNoMatch()
+	/**
+	 * Config prefixes are derived from the constant names, so a rename would silently
+	 * stop the "enabled but nothing configured" warning from matching its config key.
+	 */
+	@Example
+	void configPrefixMatchesARealConfigKey() throws Exception
 	{
-		Set<Integer> regions = Collections.singleton(11601);
-		BossLocation location = new BossLocation("nex", "Nex", regions);
-
-		int[] testRegions = {11600, 11602, 11603};
-		assertFalse(location.isInAnyRegion(testRegions));
+		for (BossLocation location : BossLocation.values())
+		{
+			AccessDeniedConfig.class.getMethod(location.getConfigPrefix() + "Enabled");
+		}
 	}
 
-	@Test
-	public void testIsInAnyRegionWithNull()
+	@Example
+	void validationNeedsBothTheMasterToggleAndARequirement()
 	{
-		Set<Integer> regions = Collections.singleton(11601);
-		BossLocation location = new BossLocation("nex", "Nex", regions);
+		AccessDeniedConfig config = mock(AccessDeniedConfig.class);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.NONE);
 
-		assertFalse(location.isInAnyRegion(null));
+		when(config.nexEnabled()).thenReturn(true);
+		assertThat(BossLocation.NEX.requiresValidation(config))
+			.as("enabled with nothing configured validates nothing").isFalse();
+
+		when(config.nexBanSaturatedHeart()).thenReturn(true);
+		assertThat(BossLocation.NEX.requiresValidation(config)).isTrue();
+
+		when(config.nexEnabled()).thenReturn(false);
+		assertThat(BossLocation.NEX.requiresValidation(config)).as("master toggle off disables validation").isFalse();
 	}
 
-	@Test
-	public void testIsInAnyRegionWithEmptyArray()
+	@Example
+	void coxSpellRequirementCountsAsARequirement()
 	{
-		Set<Integer> regions = Collections.singleton(11601);
-		BossLocation location = new BossLocation("nex", "Nex", regions);
+		AccessDeniedConfig config = mock(AccessDeniedConfig.class);
+		when(config.coxEnabled()).thenReturn(true);
 
-		int[] emptyRegions = {};
-		assertFalse(location.isInAnyRegion(emptyRegions));
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.NONE);
+		assertThat(BossLocation.COX.requiresValidation(config)).isFalse();
+
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.HUMIDIFY);
+		assertThat(BossLocation.COX.requiresValidation(config)).isTrue();
 	}
 
-	@Test
-	public void testIsInAnyRegionWithMultipleMatches()
+	@Example
+	void coxRenamesTheChugJug()
 	{
-		Set<Integer> regions = new HashSet<>(Arrays.asList(13393, 13137));
-		BossLocation location = new BossLocation("cox", "Chambers of Xeric", regions);
-
-		int[] testRegions = {13393, 13137, 13394};
-		assertTrue(location.isInAnyRegion(testRegions));
+		assertThat(BossLocation.COX.getChugJugLabel()).isEqualTo("Chugging Barrel");
+		assertThat(BossLocation.NEX.getChugJugLabel()).isEqualTo("Chug Jug");
 	}
 }

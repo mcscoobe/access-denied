@@ -1,14 +1,17 @@
 package com.osrs.accessdenied;
 
-import org.junit.Test;
+import net.jqwik.api.Example;
 
-import static org.junit.Assert.*;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Unit tests for the CombinationRune enum.
  * Verifies item IDs, substitution sets, and lookup methods.
  */
-public class CombinationRuneTest
+class CombinationRuneTest
 {
 	// Standard rune IDs
 	private static final int AIR_RUNE_ID = 556;
@@ -23,205 +26,202 @@ public class CombinationRuneTest
 	// Item IDs
 	// -----------------------------------------------------------------------
 
-	@Test
-	public void aetherHasCorrectItemId()
+	@Example
+	void aetherHasCorrectItemId()
 	{
-		assertEquals(30843, CombinationRune.AETHER.getItemId());
+		assertThat(CombinationRune.AETHER.getItemId()).isEqualTo(30843);
 	}
 
-	@Test
-	public void lavaHasCorrectItemId()
+	@Example
+	void lavaHasCorrectItemId()
 	{
-		assertEquals(4699, CombinationRune.LAVA.getItemId());
+		assertThat(CombinationRune.LAVA.getItemId()).isEqualTo(4699);
 	}
 
-	@Test
-	public void mistHasCorrectItemId()
+	@Example
+	void mistHasCorrectItemId()
 	{
-		assertEquals(4695, CombinationRune.MIST.getItemId());
+		assertThat(CombinationRune.MIST.getItemId()).isEqualTo(4695);
 	}
 
-	@Test
-	public void mudHasCorrectItemId()
+	@Example
+	void mudHasCorrectItemId()
 	{
-		assertEquals(4698, CombinationRune.MUD.getItemId());
+		assertThat(CombinationRune.MUD.getItemId()).isEqualTo(4698);
 	}
 
-	@Test
-	public void smokeHasCorrectItemId()
+	@Example
+	void smokeHasCorrectItemId()
 	{
-		assertEquals(4697, CombinationRune.SMOKE.getItemId());
+		assertThat(CombinationRune.SMOKE.getItemId()).isEqualTo(4697);
 	}
 
-	@Test
-	public void steamHasCorrectItemId()
+	@Example
+	void steamHasCorrectItemId()
 	{
-		assertEquals(4694, CombinationRune.STEAM.getItemId());
+		assertThat(CombinationRune.STEAM.getItemId()).isEqualTo(4694);
 	}
 
 	// -----------------------------------------------------------------------
 	// canSubstituteFor
 	// -----------------------------------------------------------------------
 
-	@Test
-	public void aetherSubstitutesForSoulAndCosmic()
+	@Example
+	void aetherSubstitutesForSoulAndCosmic()
 	{
-		assertTrue(CombinationRune.AETHER.canSubstituteFor(SOUL_RUNE_ID));
-		assertTrue(CombinationRune.AETHER.canSubstituteFor(COSMIC_RUNE_ID));
-		assertFalse(CombinationRune.AETHER.canSubstituteFor(FIRE_RUNE_ID));
-		assertFalse(CombinationRune.AETHER.canSubstituteFor(WATER_RUNE_ID));
-		assertFalse(CombinationRune.AETHER.canSubstituteFor(EARTH_RUNE_ID));
-		assertFalse(CombinationRune.AETHER.canSubstituteFor(AIR_RUNE_ID));
+		assertThat(CombinationRune.AETHER.canSubstituteFor(SOUL_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.AETHER.canSubstituteFor(COSMIC_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.AETHER.canSubstituteFor(FIRE_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.AETHER.canSubstituteFor(WATER_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.AETHER.canSubstituteFor(EARTH_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.AETHER.canSubstituteFor(AIR_RUNE_ID)).isFalse();
 	}
 
-	@Test
-	public void lavaSubstitutesForFireAndEarth()
+	@Example
+	void lavaSubstitutesForFireAndEarth()
 	{
-		assertTrue(CombinationRune.LAVA.canSubstituteFor(FIRE_RUNE_ID));
-		assertTrue(CombinationRune.LAVA.canSubstituteFor(EARTH_RUNE_ID));
-		assertFalse(CombinationRune.LAVA.canSubstituteFor(WATER_RUNE_ID));
-		assertFalse(CombinationRune.LAVA.canSubstituteFor(AIR_RUNE_ID));
-		assertFalse(CombinationRune.LAVA.canSubstituteFor(SOUL_RUNE_ID));
+		assertThat(CombinationRune.LAVA.canSubstituteFor(FIRE_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.LAVA.canSubstituteFor(EARTH_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.LAVA.canSubstituteFor(WATER_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.LAVA.canSubstituteFor(AIR_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.LAVA.canSubstituteFor(SOUL_RUNE_ID)).isFalse();
 	}
 
-	@Test
-	public void mistSubstitutesForAirAndWater()
+	@Example
+	void mistSubstitutesForAirAndWater()
 	{
-		assertTrue(CombinationRune.MIST.canSubstituteFor(AIR_RUNE_ID));
-		assertTrue(CombinationRune.MIST.canSubstituteFor(WATER_RUNE_ID));
-		assertFalse(CombinationRune.MIST.canSubstituteFor(FIRE_RUNE_ID));
-		assertFalse(CombinationRune.MIST.canSubstituteFor(EARTH_RUNE_ID));
-		assertFalse(CombinationRune.MIST.canSubstituteFor(SOUL_RUNE_ID));
+		assertThat(CombinationRune.MIST.canSubstituteFor(AIR_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.MIST.canSubstituteFor(WATER_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.MIST.canSubstituteFor(FIRE_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.MIST.canSubstituteFor(EARTH_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.MIST.canSubstituteFor(SOUL_RUNE_ID)).isFalse();
 	}
 
-	@Test
-	public void mudSubstitutesForEarthAndWater()
+	@Example
+	void mudSubstitutesForEarthAndWater()
 	{
-		assertTrue(CombinationRune.MUD.canSubstituteFor(EARTH_RUNE_ID));
-		assertTrue(CombinationRune.MUD.canSubstituteFor(WATER_RUNE_ID));
-		assertFalse(CombinationRune.MUD.canSubstituteFor(FIRE_RUNE_ID));
-		assertFalse(CombinationRune.MUD.canSubstituteFor(AIR_RUNE_ID));
-		assertFalse(CombinationRune.MUD.canSubstituteFor(SOUL_RUNE_ID));
+		assertThat(CombinationRune.MUD.canSubstituteFor(EARTH_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.MUD.canSubstituteFor(WATER_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.MUD.canSubstituteFor(FIRE_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.MUD.canSubstituteFor(AIR_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.MUD.canSubstituteFor(SOUL_RUNE_ID)).isFalse();
 	}
 
-	@Test
-	public void smokeSubstitutesForAirAndFire()
+	@Example
+	void smokeSubstitutesForAirAndFire()
 	{
-		assertTrue(CombinationRune.SMOKE.canSubstituteFor(AIR_RUNE_ID));
-		assertTrue(CombinationRune.SMOKE.canSubstituteFor(FIRE_RUNE_ID));
-		assertFalse(CombinationRune.SMOKE.canSubstituteFor(WATER_RUNE_ID));
-		assertFalse(CombinationRune.SMOKE.canSubstituteFor(EARTH_RUNE_ID));
-		assertFalse(CombinationRune.SMOKE.canSubstituteFor(SOUL_RUNE_ID));
+		assertThat(CombinationRune.SMOKE.canSubstituteFor(AIR_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.SMOKE.canSubstituteFor(FIRE_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.SMOKE.canSubstituteFor(WATER_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.SMOKE.canSubstituteFor(EARTH_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.SMOKE.canSubstituteFor(SOUL_RUNE_ID)).isFalse();
 	}
 
-	@Test
-	public void steamSubstitutesForFireAndWater()
+	@Example
+	void steamSubstitutesForFireAndWater()
 	{
-		assertTrue(CombinationRune.STEAM.canSubstituteFor(FIRE_RUNE_ID));
-		assertTrue(CombinationRune.STEAM.canSubstituteFor(WATER_RUNE_ID));
-		assertFalse(CombinationRune.STEAM.canSubstituteFor(EARTH_RUNE_ID));
-		assertFalse(CombinationRune.STEAM.canSubstituteFor(AIR_RUNE_ID));
-		assertFalse(CombinationRune.STEAM.canSubstituteFor(SOUL_RUNE_ID));
+		assertThat(CombinationRune.STEAM.canSubstituteFor(FIRE_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.STEAM.canSubstituteFor(WATER_RUNE_ID)).isTrue();
+		assertThat(CombinationRune.STEAM.canSubstituteFor(EARTH_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.STEAM.canSubstituteFor(AIR_RUNE_ID)).isFalse();
+		assertThat(CombinationRune.STEAM.canSubstituteFor(SOUL_RUNE_ID)).isFalse();
 	}
 
 	// -----------------------------------------------------------------------
 	// getSubstitutesForRune — reverse lookup
 	// -----------------------------------------------------------------------
 
-	@Test
-	public void getSubstitutesForRuneReturnsCorrectRunesForFire()
+	@Example
+	void getSubstitutesForRuneReturnsCorrectRunesForFire()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(FIRE_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(FIRE_RUNE_ID);
 		// Lava, Smoke, Steam all substitute for Fire
-		assertEquals(3, result.length);
+		assertThat(result.size()).isEqualTo(3);
 		assertContains(result, CombinationRune.LAVA);
 		assertContains(result, CombinationRune.SMOKE);
 		assertContains(result, CombinationRune.STEAM);
 	}
 
-	@Test
-	public void getSubstitutesForRuneReturnsCorrectRunesForWater()
+	@Example
+	void getSubstitutesForRuneReturnsCorrectRunesForWater()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(WATER_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(WATER_RUNE_ID);
 		// Mist, Mud, Steam all substitute for Water
-		assertEquals(3, result.length);
+		assertThat(result.size()).isEqualTo(3);
 		assertContains(result, CombinationRune.MIST);
 		assertContains(result, CombinationRune.MUD);
 		assertContains(result, CombinationRune.STEAM);
 	}
 
-	@Test
-	public void getSubstitutesForRuneReturnsCorrectRunesForEarth()
+	@Example
+	void getSubstitutesForRuneReturnsCorrectRunesForEarth()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(EARTH_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(EARTH_RUNE_ID);
 		// Lava and Mud substitute for Earth
-		assertEquals(2, result.length);
+		assertThat(result.size()).isEqualTo(2);
 		assertContains(result, CombinationRune.LAVA);
 		assertContains(result, CombinationRune.MUD);
 	}
 
-	@Test
-	public void getSubstitutesForRuneReturnsCorrectRunesForAir()
+	@Example
+	void getSubstitutesForRuneReturnsCorrectRunesForAir()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(AIR_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(AIR_RUNE_ID);
 		// Mist and Smoke substitute for Air
-		assertEquals(2, result.length);
+		assertThat(result.size()).isEqualTo(2);
 		assertContains(result, CombinationRune.MIST);
 		assertContains(result, CombinationRune.SMOKE);
 	}
 
-	@Test
-	public void getSubstitutesForRuneReturnsCorrectRunesForSoul()
+	@Example
+	void getSubstitutesForRuneReturnsCorrectRunesForSoul()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(SOUL_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(SOUL_RUNE_ID);
 		// Only Aether substitutes for Soul
-		assertEquals(1, result.length);
+		assertThat(result.size()).isEqualTo(1);
 		assertContains(result, CombinationRune.AETHER);
 	}
 
-	@Test
-	public void getSubstitutesForRuneReturnsCorrectRunesForCosmic()
+	@Example
+	void getSubstitutesForRuneReturnsCorrectRunesForCosmic()
 	{
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(COSMIC_RUNE_ID);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(COSMIC_RUNE_ID);
 		// Only Aether substitutes for Cosmic
-		assertEquals(1, result.length);
+		assertThat(result.size()).isEqualTo(1);
 		assertContains(result, CombinationRune.AETHER);
 	}
 
-	@Test
-	public void getSubstitutesForRuneReturnsEmptyForUnsubstitutableRune()
+	@Example
+	void getSubstitutesForRuneReturnsEmptyForUnsubstitutableRune()
 	{
 		// No combination rune substitutes for Death runes
-		CombinationRune[] result = CombinationRune.getSubstitutesForRune(DEATH_RUNE_ID);
-		assertEquals(0, result.length);
+		List<CombinationRune> result = CombinationRune.getSubstitutesForRune(DEATH_RUNE_ID);
+		assertThat(result.size()).isEqualTo(0);
 	}
 
 	// -----------------------------------------------------------------------
 	// getSubstitutesFor
 	// -----------------------------------------------------------------------
 
-	@Test(expected = UnsupportedOperationException.class)
-	public void getSubstitutesForReturnsUnmodifiableSet()
+	@Example
+	void getSubstitutesForReturnsUnmodifiableSet()
 	{
-		CombinationRune.AETHER.getSubstitutesFor().add(999);
+		assertThatThrownBy(() -> CombinationRune.AETHER.getSubstitutesFor().add(999))
+			.isInstanceOf(UnsupportedOperationException.class);
 	}
 
-	@Test
-	public void sixCombinationRunesDefined()
+	@Example
+	void sixCombinationRunesDefined()
 	{
-		assertEquals(6, CombinationRune.values().length);
+		assertThat(CombinationRune.values().length).isEqualTo(6);
 	}
 
 	// -----------------------------------------------------------------------
 	// Helpers
 	// -----------------------------------------------------------------------
 
-	private void assertContains(CombinationRune[] array, CombinationRune expected)
+	private void assertContains(List<CombinationRune> runes, CombinationRune expected)
 	{
-		for (CombinationRune rune : array)
-		{
-			if (rune == expected) return;
-		}
-		fail("Expected " + expected + " to be present in result array");
+		assertThat(runes.contains(expected)).as("Expected " + expected + " to be present in " + runes).isTrue();
 	}
 }

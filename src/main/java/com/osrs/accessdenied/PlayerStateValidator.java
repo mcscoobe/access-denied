@@ -16,7 +16,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /**
@@ -33,6 +32,11 @@ public class PlayerStateValidator
 	 * variants are listed; uncharged tomes have distinct item IDs and provide nothing.
 	 */
 	private static final Map<Integer, int[]> INFINITE_RUNE_SOURCES = buildInfiniteRuneSources();
+
+	/**
+	 * Regular, divine (current and old), and locked divine rune pouches.
+	 */
+	private static final Set<Integer> RUNE_POUCH_IDS = Set.of(12791, 27281, 27086, 27509);
 
 	private final Client client;
 
@@ -88,182 +92,82 @@ public class PlayerStateValidator
 	}
 
 	/**
-	 * Check if the player is on the Arceuus spellbook.
-	 * Arceuus spellbook is required to cast Thralls.
-	 * 
-	 * @return true if the player is on the Arceuus spellbook, false otherwise
+	 * Spellbook varbit values: 0 = Standard, 1 = Ancient, 2 = Lunar, 3 = Arceuus.
+	 */
+	private static final int ANCIENT_SPELLBOOK = 1;
+	private static final int LUNAR_SPELLBOOK = 2;
+	private static final int ARCEUUS_SPELLBOOK = 3;
+
+	/**
+	 * Arceuus is required to cast Thralls and Death Charge.
 	 */
 	public boolean isOnArceuusSpellbook()
 	{
-		// Varbits.SPELLBOOK tracks the current spellbook
-		// 0 = Standard, 1 = Ancient, 2 = Lunar, 3 = Arceuus
-		final int ARCEUUS_SPELLBOOK = 3;
-
-		int currentSpellbook = getCurrentSpellbook();
-		log.debug("Current spellbook varbit value: {} (3 = Arceuus)", currentSpellbook);
-
-		return currentSpellbook == ARCEUUS_SPELLBOOK;
+		return getCurrentSpellbook() == ARCEUUS_SPELLBOOK;
 	}
 
 	/**
-	 * Check if the player is on the Lunar spellbook.
-	 * Lunar spellbook is required to cast Humidify and Vengeance.
-	 *
-	 * @return true if the player is on the Lunar spellbook, false otherwise
+	 * Lunar is required to cast Humidify and Vengeance.
 	 */
 	public boolean isOnLunarSpellbook()
 	{
-		// Varbits.SPELLBOOK tracks the current spellbook
-		// 0 = Standard, 1 = Ancient, 2 = Lunar, 3 = Arceuus
-		final int LUNAR_SPELLBOOK = 2;
-
-		int currentSpellbook = getCurrentSpellbook();
-		log.debug("Current spellbook varbit value: {} (2 = Lunar)", currentSpellbook);
-
-		return currentSpellbook == LUNAR_SPELLBOOK;
+		return getCurrentSpellbook() == LUNAR_SPELLBOOK;
 	}
 
 	/**
-	 * Check if the player is on the Ancient spellbook.
-	 * Ancient spellbook is required to cast Ice Barrage and Blood Barrage.
-	 *
-	 * @return true if the player is on the Ancient spellbook, false otherwise
+	 * Ancient is required to cast Ice Barrage and Blood Barrage.
 	 */
 	public boolean isOnAncientSpellbook()
 	{
-		// Varbits.SPELLBOOK tracks the current spellbook
-		// 0 = Standard, 1 = Ancient, 2 = Lunar, 3 = Arceuus
-		final int ANCIENT_SPELLBOOK = 1;
-
-		int currentSpellbook = getCurrentSpellbook();
-		log.debug("Current spellbook varbit value: {} (1 = Ancient)", currentSpellbook);
-
-		return currentSpellbook == ANCIENT_SPELLBOOK;
+		return getCurrentSpellbook() == ANCIENT_SPELLBOOK;
 	}
 
 	/**
-	 * Check if the player has the required runes to cast Thralls.
-	 * Thralls requires: 10 Fire runes, 5 Blood runes, 1 Cosmic rune
-	 * Aether runes count as both Soul and Cosmic runes.
-	 *
-	 * @return true if the player has sufficient runes, false otherwise
+	 * Thralls, on Arceuus. Aether runes substitute for the Cosmic rune.
 	 */
 	public boolean hasResurrectGreaterGhostRunes()
 	{
-		// Required runes for Thralls
-		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(ItemID.FIRERUNE, 10);  // Fire rune
-		requiredRunes.put(ItemID.BLOODRUNE, 5); // Blood rune
-		requiredRunes.put(ItemID.COSMICRUNE, 1); // Cosmic rune
-
-		log.debug("Checking Thralls runes:");
-		log.debug("  Required: Fire x10, Blood x5, Cosmic x1");
-
-		return hasRequiredRunesWithSubstitution(requiredRunes, "Thralls");
+		return hasRequiredRunes(Map.of(ItemID.FIRERUNE, 10, ItemID.BLOODRUNE, 5, ItemID.COSMICRUNE, 1));
 	}
 
 	/**
-	 * Check if the player has the required runes to cast Death Charge.
-	 * Death Charge requires: 1 Death rune, 1 Blood rune, 1 Soul rune
-	 * Aether runes count as both Soul and Cosmic runes.
-	 * 
-	 * @return true if the player has sufficient runes, false otherwise
+	 * Death Charge, on Arceuus. Aether runes substitute for the Soul rune.
 	 */
 	public boolean hasDeathChargeRunes()
 	{
-		// Required runes for Death Charge
-		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(ItemID.DEATHRUNE, 1); // Death rune
-		requiredRunes.put(ItemID.BLOODRUNE, 1); // Blood rune
-		requiredRunes.put(ItemID.SOULRUNE, 1);  // Soul rune
-
-		log.debug("Checking Death Charge runes:");
-		log.debug("  Required: Death x1, Blood x1, Soul x1");
-
-		return hasRequiredRunesWithSubstitution(requiredRunes, "Death Charge");
+		return hasRequiredRunes(Map.of(ItemID.DEATHRUNE, 1, ItemID.BLOODRUNE, 1, ItemID.SOULRUNE, 1));
 	}
 
 	/**
-	 * Check if the player has the required runes to cast Humidify.
-	 * Humidify requires: 1 Astral rune, 1 Fire rune, 1 Water rune.
-	 * Lunar spellbook only; no Aether substitutions apply.
-	 *
-	 * @return true if the player has sufficient runes, false otherwise
+	 * Humidify, on Lunar.
 	 */
 	public boolean hasHumidifyRunes()
 	{
-		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(ItemID.ASTRALRUNE, 1); // Astral rune
-		requiredRunes.put(ItemID.FIRERUNE, 1);   // Fire rune
-		requiredRunes.put(ItemID.WATERRUNE, 1);  // Water rune
-
-		log.debug("Checking Humidify runes:");
-		log.debug("  Required: Astral x1, Fire x1, Water x1");
-
-		return hasRequiredRunesWithSubstitution(requiredRunes, "Humidify");
+		return hasRequiredRunes(Map.of(ItemID.ASTRALRUNE, 1, ItemID.FIRERUNE, 1, ItemID.WATERRUNE, 1));
 	}
 
 	/**
-	 * Check if the player has the required runes to cast Vengeance.
-	 * Vengeance requires: 10 Earth runes, 4 Astral runes, 2 Death runes.
-	 * Lunar spellbook only; no Aether substitutions apply.
-	 *
-	 * @return true if the player has sufficient runes, false otherwise
+	 * Vengeance, on Lunar.
 	 */
 	public boolean hasVengeanceRunes()
 	{
-		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(ItemID.EARTHRUNE, 10); // Earth rune
-		requiredRunes.put(ItemID.ASTRALRUNE, 4); // Astral rune
-		requiredRunes.put(ItemID.DEATHRUNE, 2);  // Death rune
-
-		log.debug("Checking Vengeance runes:");
-		log.debug("  Required: Earth x10, Astral x4, Death x2");
-
-		return hasRequiredRunesWithSubstitution(requiredRunes, "Vengeance");
+		return hasRequiredRunes(Map.of(ItemID.EARTHRUNE, 10, ItemID.ASTRALRUNE, 4, ItemID.DEATHRUNE, 2));
 	}
 
 	/**
-	 * Check if the player has the required runes to cast Ice Barrage.
-	 * Ice Barrage requires: 6 Water runes, 2 Death runes, 4 Blood runes
-	 * Note: Ice Barrage does not use Soul or Cosmic runes, so Aether runes don't help.
-	 * Infinite water-rune sources (Kodai wand, Tome of Water, water staves) satisfy
-	 * the water requirement via the generic infinite-rune-source check.
-	 * @return true if the player has sufficient runes, false otherwise
+	 * Ice Barrage, on Ancient. Uses no Soul or Cosmic runes, so Aether runes don't help.
 	 */
 	public boolean hasIceBarrageRunes()
 	{
-		// Required runes for Ice Barrage
-		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(ItemID.WATERRUNE, 6); // Water rune
-		requiredRunes.put(ItemID.DEATHRUNE, 2); // Death rune
-		requiredRunes.put(ItemID.BLOODRUNE, 4); // Blood rune
-
-		log.debug("Checking Ice Barrage runes:");
-		log.debug("  Required: Water x6, Death x2, Blood x4");
-
-		return hasRequiredRunesWithSubstitution(requiredRunes, "Ice Barrage");
+		return hasRequiredRunes(Map.of(ItemID.WATERRUNE, 6, ItemID.DEATHRUNE, 2, ItemID.BLOODRUNE, 4));
 	}
 
 	/**
-	 * Check if the player has the required runes to cast Blood Barrage.
-	 * Blood Barrage requires: 4 Blood runes, 1 Soul rune, 4 Death rune
-	 * Aether runes can substitute for Soul runes.
-	 * 
-	 * @return true if the player has sufficient runes, false otherwise
+	 * Blood Barrage, on Ancient. Aether runes substitute for the Soul rune.
 	 */
 	public boolean hasBloodBarrageRunes()
 	{
-		// Required runes for Blood Barrage
-		Map<Integer, Integer> requiredRunes = new HashMap<>();
-		requiredRunes.put(ItemID.BLOODRUNE, 4); // Blood rune
-		requiredRunes.put(ItemID.SOULRUNE, 1);  // Soul rune
-		requiredRunes.put(ItemID.DEATHRUNE, 4); // Death rune
-
-		log.debug("Checking Blood Barrage runes:");
-		log.debug("  Required: Blood x4, Soul x1, Death x4");
-
-		return hasRequiredRunesWithSubstitution(requiredRunes, "Blood Barrage");
+		return hasRequiredRunes(Map.of(ItemID.BLOODRUNE, 4, ItemID.SOULRUNE, 1, ItemID.DEATHRUNE, 4));
 	}
 
 	/**
@@ -281,33 +185,20 @@ public class PlayerStateValidator
 	{
 		Set<Integer> covered = new HashSet<>();
 
-		forEachCarriedOrWornItem(item ->
+		anyCarriedOrWornItemMatches(item ->
 		{
 			int[] runes = INFINITE_RUNE_SOURCES.get(item.getId());
 			if (runes != null)
 			{
-				log.debug("Infinite rune source found: item {} covers runes {}", item.getId(), runes);
 				for (int runeId : runes)
 				{
 					covered.add(runeId);
 				}
 			}
+			return false;
 		});
 
 		return covered;
-	}
-
-	/**
-	 * Invokes {@code action} for every non-null item in the player's inventory and worn
-	 * equipment, skipping either container if it isn't present (e.g. not yet loaded).
-	 */
-	private void forEachCarriedOrWornItem(Consumer<Item> action)
-	{
-		anyCarriedOrWornItemMatches(item ->
-		{
-			action.accept(item);
-			return false;
-		});
 	}
 
 	/**
@@ -342,24 +233,29 @@ public class PlayerStateValidator
 
 	public boolean hasChugJug()
 	{
-		return hasItemInInventory(ItemID.MM_PREPOT_DEVICE);
+		return anyInventoryItemMatches(item -> item.getId() == ItemID.MM_PREPOT_DEVICE);
 	}
 
 	public boolean hasSaturatedHeart()
 	{
-		return hasItemInInventory(ItemID.SATURATED_HEART);
+		return anyInventoryItemMatches(item -> item.getId() == ItemID.SATURATED_HEART);
 	}
 
-	private boolean hasItemInInventory(int itemId)
+	/**
+	 * As {@link #anyCarriedOrWornItemMatches}, but the inventory only — worn equipment
+	 * doesn't count for items that are banned rather than required.
+	 */
+	private boolean anyInventoryItemMatches(Predicate<Item> matcher)
 	{
 		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
 		if (inventory == null)
 		{
 			return false;
 		}
+
 		for (Item item : inventory.getItems())
 		{
-			if (item != null && item.getId() == itemId)
+			if (item != null && matcher.test(item))
 			{
 				return true;
 			}
@@ -378,10 +274,9 @@ public class PlayerStateValidator
 	 * treated as satisfied regardless of quantity.
 	 *
 	 * @param requiredRunes Map of rune ID to required quantity
-	 * @param spellName Name of the spell for logging purposes
 	 * @return true if the player has sufficient runes, false otherwise
 	 */
-	private boolean hasRequiredRunesWithSubstitution(Map<Integer, Integer> requiredRunes, String spellName)
+	private boolean hasRequiredRunes(Map<Integer, Integer> requiredRunes)
 	{
 		Map<Integer, Integer> totalRunes = getTotalRuneCounts();
 		Set<Integer> infiniteRunes = getInfiniteRuneSources();
@@ -389,11 +284,9 @@ public class PlayerStateValidator
 		for (Map.Entry<Integer, Integer> entry : requiredRunes.entrySet())
 		{
 			int runeId = entry.getKey();
-			int required = entry.getValue();
 
 			if (infiniteRunes.contains(runeId))
 			{
-				log.debug("  Rune {} - covered by an infinite rune source", runeId);
 				continue;
 			}
 
@@ -404,16 +297,13 @@ public class PlayerStateValidator
 				available += totalRunes.getOrDefault(combinationRune.getItemId(), 0);
 			}
 
-			log.debug("  Rune {} - need {}, have {}", runeId, required, available);
-
-			if (available < required)
+			if (available < entry.getValue())
 			{
-				log.debug("  Missing rune {} - need {}, have {}", runeId, required, available);
+				log.debug("Missing rune {} - need {}, have {}", runeId, entry.getValue(), available);
 				return false;
 			}
 		}
 
-		log.debug("  All runes available for {}!", spellName);
 		return true;
 	}
 
@@ -425,28 +315,16 @@ public class PlayerStateValidator
 	 */
 	public boolean hasBookOfTheDead()
 	{
-		final int BOOK_OF_THE_DEAD_ID = ItemID.BOOK_OF_THE_DEAD;
-		boolean found = anyCarriedOrWornItemMatches(item -> item.getId() == BOOK_OF_THE_DEAD_ID);
-
-		log.debug("Book of the Dead {}found", found ? "" : "NOT ");
-		return found;
+		return anyCarriedOrWornItemMatches(item -> item.getId() == ItemID.BOOK_OF_THE_DEAD);
 	}
 
 	/**
-	 * Get total rune counts from inventory, equipment, and rune pouch.
-	 * This method is called multiple times during validation, so results should be cached
-	 * at the validation level to avoid redundant inventory scans.
-	 * Sources checked:
-	 * 1. Inventory - loose runes and items
-	 * 2. Rune pouch - stored runes (if pouch is in inventory)
-	 * 
-	 * @return Map of rune ID to total quantity across all sources
+	 * @return Map of rune ID to total quantity across the inventory and the rune pouch
 	 */
 	private Map<Integer, Integer> getTotalRuneCounts()
 	{
 		Map<Integer, Integer> runeCounts = new HashMap<>();
 
-		// Count runes in inventory
 		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
 		if (inventory != null)
 		{
@@ -459,7 +337,6 @@ public class PlayerStateValidator
 			}
 		}
 
-		// Count runes in rune pouch
 		Map<Integer, Integer> runePouchRunes = getRunePouchContents();
 		for (Map.Entry<Integer, Integer> entry : runePouchRunes.entrySet())
 		{
@@ -470,31 +347,22 @@ public class PlayerStateValidator
 	}
 
 	/**
-	 * Get rune pouch contents from varbits.
-	 * The rune pouch uses varbits to store contents (not varps).
-	 * The varbit values are enum keys that need to be mapped to actual item IDs.
-	 * IMPORTANT: Only returns contents if the rune pouch is actually in the player's inventory.
-	 * This prevents reading stale varbit data when the pouch has been deposited.
-	 * Rune Pouch Storage:
-	 * - Up to 4 different rune types can be stored
-	 * - Each slot has a TYPE varbit (enum key) and QUANTITY varbit
-	 * - TYPE varbit of 0 means the slot is empty
-	 * - The enum maps varbit values to actual rune item IDs
-	 * 
+	 * Reads the rune pouch's four (type varbit, quantity varbit) slot pairs, mapping each
+	 * type key through the RUNEPOUCH_RUNE enum to an item ID. A type key of 0 is an empty
+	 * slot. The varbits persist after the pouch is deposited, so the pouch must be
+	 * confirmed present first or stale contents would be counted.
+	 *
 	 * @return Map of rune ID to quantity in the rune pouch
 	 */
 	private Map<Integer, Integer> getRunePouchContents()
 	{
 		Map<Integer, Integer> contents = new HashMap<>();
 
-		// First, check if the player actually has a rune pouch in their inventory
 		if (!hasRunePouchInInventory())
 		{
-			log.debug("Rune pouch not found in inventory, ignoring varbits");
 			return contents;
 		}
 
-		// Get the rune pouch enum to map varbit values to item IDs
 		EnumComposition runepouchEnum = client.getEnum(EnumID.RUNEPOUCH_RUNE);
 		if (runepouchEnum == null)
 		{
@@ -502,8 +370,6 @@ public class PlayerStateValidator
 			return contents;
 		}
 
-		// Rune pouch uses varbits to store contents
-		// Use VarbitID constants from RuneLite API
 		int[] runeVarbits = {
 			VarbitID.RUNE_POUCH_TYPE_1,
 			VarbitID.RUNE_POUCH_TYPE_2,
@@ -517,76 +383,25 @@ public class PlayerStateValidator
 			VarbitID.RUNE_POUCH_QUANTITY_4
 		};
 
-		log.debug("Reading rune pouch contents from varbits:");
-		for (int i = 0; i < 4; i++)
+		for (int i = 0; i < runeVarbits.length; i++)
 		{
 			int runeEnumKey = client.getVarbitValue(runeVarbits[i]);
 			int amount = client.getVarbitValue(amountVarbits[i]);
-
-			log.debug("  Slot {} - Varbit value (enum key): {}, Amount: {}", i + 1, runeEnumKey, amount);
 
 			if (runeEnumKey <= 0 || amount <= 0)
 			{
 				continue;
 			}
 
-			// Map the enum key to the actual item ID
-			int itemId = runepouchEnum.getIntValue(runeEnumKey);
-			log.debug("    -> Mapped to ItemID: {}", itemId);
-			contents.put(itemId, amount);
+			contents.put(runepouchEnum.getIntValue(runeEnumKey), amount);
 		}
 
-		log.debug("Rune pouch total: {} different rune types", contents.size());
-		
 		return contents;
 	}
 
-	/**
-	 * Check if the player has a rune pouch in their inventory.
-	 * Rune pouch item IDs:
-	 * - 12791: Regular rune pouch
-	 * - 27281: Divine rune pouch
-	 * - 27086: Divine rune pouch (old ID, may be deprecated)
-	 * - 27509: Divine rune pouch (locked)
-	 * This check is critical because rune pouch varbits persist even after
-	 * the pouch is deposited, so we must verify the pouch is actually present.
-	 * 
-	 * @return true if any rune pouch variant is in inventory, false otherwise
-	 */
 	private boolean hasRunePouchInInventory()
 	{
-		final int RUNE_POUCH_ID = 12791;
-		final int DIVINE_RUNE_POUCH_ID = 27281;
-		final int DIVINE_RUNE_POUCH_OLD_ID = 27086;
-		final int DIVINE_RUNE_POUCH_LOCKED_ID = 27509;
-
-		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
-		if (inventory == null)
-		{
-			log.debug("Inventory container is null");
-			return false;
-		}
-
-		for (Item item : inventory.getItems())
-		{
-			if (item == null)
-			{
-				continue;
-			}
-
-			int itemId = item.getId();
-			if (itemId == RUNE_POUCH_ID 
-				|| itemId == DIVINE_RUNE_POUCH_ID 
-				|| itemId == DIVINE_RUNE_POUCH_OLD_ID
-				|| itemId == DIVINE_RUNE_POUCH_LOCKED_ID)
-			{
-				log.debug("Rune pouch found in inventory (ID: {})", itemId);
-				return true;
-			}
-		}
-
-		log.debug("No rune pouch found in inventory");
-		return false;
+		return anyInventoryItemMatches(item -> RUNE_POUCH_IDS.contains(item.getId()));
 	}
 
 	private int getCurrentSpellbook()

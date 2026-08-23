@@ -34,6 +34,8 @@ import java.util.Set;
 )
 public class AccessDeniedPlugin extends Plugin
 {
+	private static final String RELEASE_LOCK_OPTION = "Release raid lock";
+
 	@SuppressWarnings("unused")
 	@Inject
 	private Client client;
@@ -57,6 +59,7 @@ public class AccessDeniedPlugin extends Plugin
 	private boolean coxRaidActive = false;
 	private Raid currentCoxRaid;
 	private boolean coxScoutingRaidGood = false;
+	private String coxScoutingReleasedLayout;
 
 	@Override
 	protected void startUp()
@@ -68,6 +71,7 @@ public class AccessDeniedPlugin extends Plugin
 		coxRaidActive = false;
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
+		coxScoutingReleasedLayout = null;
 		migrateLegacyCoxSpellConfig();
 	}
 
@@ -131,6 +135,7 @@ public class AccessDeniedPlugin extends Plugin
 		coxRaidActive = false;
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
+		coxScoutingReleasedLayout = null;
 	}
 
 	@Subscribe
@@ -231,6 +236,7 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
+		coxScoutingReleasedLayout = null;
 	}
 
 	@SuppressWarnings("unused")
@@ -306,6 +312,7 @@ public class AccessDeniedPlugin extends Plugin
 			if (coxScoutingRaidGood)
 			{
 				removeGameObjectEntriesForObject(BossLocations.COX_RELOAD_OBJECT);
+				addReleaseLockEntry();
 			}
 		}
 	}
@@ -316,6 +323,13 @@ public class AccessDeniedPlugin extends Plugin
 
 		if (!config.coxScoutingEnabled() || currentCoxRaid == null)
 		{
+			coxScoutingRaidGood = false;
+			return;
+		}
+
+		if (currentCoxRaid.getLayout().toCodeString().equalsIgnoreCase(coxScoutingReleasedLayout))
+		{
+			log.debug("evaluateCoxScoutingRaid: lock released by the player for this layout");
 			coxScoutingRaidGood = false;
 			return;
 		}
@@ -375,6 +389,38 @@ public class AccessDeniedPlugin extends Plugin
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
 				"Good raid found — reload protection active.", null);
 		}
+	}
+
+	/**
+	 * Adds the escape hatch for the reload block: right-clicking the reload object still
+	 * offers a way out, since the block itself removes every game option on it. Inserted at
+	 * index 0 (the bottom of the menu) so it can never become the left-click action — a
+	 * stray click must not be able to unlock and then reload a good raid.
+	 */
+	private void addReleaseLockEntry()
+	{
+		MenuEntry[] entries = client.getMenu().getMenuEntries();
+		for (MenuEntry entry : entries == null ? new MenuEntry[0] : entries)
+		{
+			if (RELEASE_LOCK_OPTION.equals(entry.getOption()))
+			{
+				// The object can contribute several entries, one event each — only one hatch.
+				return;
+			}
+		}
+
+		client.getMenu().createMenuEntry(0)
+			.setOption(RELEASE_LOCK_OPTION)
+			.setType(MenuAction.RUNELITE)
+			.onClick(e -> releaseCoxScoutingLock());
+	}
+
+	private void releaseCoxScoutingLock()
+	{
+		coxScoutingRaidGood = false;
+		coxScoutingReleasedLayout = currentCoxRaid != null ? currentCoxRaid.getLayout().toCodeString() : null;
+		client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+			"Reload protection released — the reload option is available again.", null);
 	}
 
 	private void removeGameObjectEntriesForObject(int objectId)

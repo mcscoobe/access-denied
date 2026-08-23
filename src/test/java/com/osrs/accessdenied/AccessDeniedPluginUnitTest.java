@@ -14,6 +14,8 @@ import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.ProfileChanged;
+import net.runelite.client.plugins.raids.Raid;
+import net.runelite.client.plugins.raids.solver.Layout;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -23,6 +25,7 @@ import org.mockito.MockitoAnnotations;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.function.Consumer;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -611,12 +614,85 @@ public class AccessDeniedPluginUnitTest
 		verify(menu, never()).setMenuEntries(any());
 	}
 
+	@Test
+	@SuppressWarnings("unchecked")
+	public void testReleaseLockEntryUnlocksReloadObject() throws Exception
+	{
+		// Issue #15: with the reload block active the object has no game options left, so the
+		// only way out must be the plugin's own menu entry.
+		setField(plugin, "coxScoutingRaidGood", true);
+
+		Layout layout = mock(Layout.class);
+		when(layout.toCodeString()).thenReturn("fsccppcscf");
+		Raid raid = mock(Raid.class);
+		when(raid.getLayout()).thenReturn(layout);
+		setField(plugin, "currentCoxRaid", raid);
+
+		MenuEntry reloadEntry = mock(MenuEntry.class);
+		when(reloadEntry.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(reloadEntry.getIdentifier()).thenReturn(BossLocations.COX_RELOAD_OBJECT);
+		MenuEntry walkEntry = mock(MenuEntry.class);
+		when(walkEntry.getType()).thenReturn(MenuAction.WALK);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{walkEntry, reloadEntry});
+
+		MenuEntry releaseEntry = mock(MenuEntry.class, RETURNS_SELF);
+		when(menu.createMenuEntry(0)).thenReturn(releaseEntry);
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.COX_RELOAD_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		verify(menu).setMenuEntries(any());
+		ArgumentCaptor<Consumer<MenuEntry>> onClick = ArgumentCaptor.forClass(Consumer.class);
+		verify(releaseEntry).onClick(onClick.capture());
+
+		onClick.getValue().accept(releaseEntry);
+
+		assertFalse("clicking release must lift the block", (boolean) getField(plugin, "coxScoutingRaidGood"));
+
+		// A re-scout of the same raid must not silently re-lock it.
+		when(config.coxScoutingEnabled()).thenReturn(true);
+		when(config.coxScoutWhitelistedRooms()).thenReturn("");
+		when(config.coxScoutWhitelistedLayouts()).thenReturn("fsccppcscf");
+		invokePrivate(plugin, "evaluateCoxScoutingRaid");
+
+		assertFalse("released raid must stay unlocked", (boolean) getField(plugin, "coxScoutingRaidGood"));
+	}
+
+	@Test
+	public void testReleaseLockEntryNotAddedTwiceForSameMenu() throws Exception
+	{
+		setField(plugin, "coxScoutingRaidGood", true);
+
+		MenuEntry existing = mock(MenuEntry.class);
+		when(existing.getOption()).thenReturn("Release raid lock");
+		when(existing.getType()).thenReturn(MenuAction.RUNELITE);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{existing});
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.COX_RELOAD_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		verify(menu, never()).createMenuEntry(anyInt());
+	}
+
 	// Helper methods for reflection
 	private void setField(Object target, String fieldName, Object value) throws Exception
 	{
 		Field field = target.getClass().getDeclaredField(fieldName);
 		field.setAccessible(true);
 		field.set(target, value);
+	}
+
+	private void invokePrivate(Object target, String methodName) throws Exception
+	{
+		Method method = target.getClass().getDeclaredMethod(methodName);
+		method.setAccessible(true);
+		method.invoke(target);
 	}
 
 	@SuppressWarnings("unchecked")

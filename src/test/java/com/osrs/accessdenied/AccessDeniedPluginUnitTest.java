@@ -819,6 +819,28 @@ class AccessDeniedPluginUnitTest
 		assertThat(evaluateScoutedRaid()).as("rooms passing must not excuse a failing layout").isFalse();
 	}
 
+	@Example
+	void testPartiallyScoutedRaidIsNotLockedYet() throws Exception
+	{
+		// An unwalked room still reports type COMBAT/PUZZLE, so it would never match a
+		// disallowed name and would lock a raid that may still turn out to contain one.
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.UNKNOWN_COMBAT);
+		when(config.coxScoutDisallowedRooms()).thenReturn("vespula");
+
+		assertThat(evaluateScoutedRaid()).as("an unfinished scout must not arm the lock").isFalse();
+	}
+
+	@Example
+	void testFullyScoutedRaidLocksOnceUnknownRoomsResolve() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		stubRaidRooms(RaidRoom.TIGHTROPE, RaidRoom.SHAMANS);
+		when(config.coxScoutDisallowedRooms()).thenReturn("vespula");
+
+		assertThat(evaluateScoutedRaid()).as("the same raid must lock once every room is known").isTrue();
+	}
+
 	private void setField(Object target, String fieldName, Object value) throws Exception
 	{
 		Field field = target.getClass().getDeclaredField(fieldName);

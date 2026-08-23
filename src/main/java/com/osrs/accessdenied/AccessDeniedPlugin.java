@@ -287,7 +287,23 @@ public class AccessDeniedPlugin extends Plugin
 
 		if (!requiredRooms.isEmpty() || !disallowedRooms.isEmpty())
 		{
-			Set<String> raidRooms = combatAndPuzzleRoomNames();
+			Set<RaidRoom> rooms = combatAndPuzzleRooms();
+
+			// A room the player has not walked to yet still reports type COMBAT/PUZZLE, so it
+			// would slip past the disallowed check and lock a raid that may yet turn out bad.
+			// Wait for the scout to finish instead.
+			if (rooms.contains(RaidRoom.UNKNOWN_COMBAT) || rooms.contains(RaidRoom.UNKNOWN_PUZZLE))
+			{
+				log.debug("evaluateCoxScoutingRaid: raid is not fully scouted yet — raid is bad");
+				coxScoutingRaidGood = false;
+				return;
+			}
+
+			Set<String> raidRooms = new HashSet<>();
+			for (RaidRoom room : rooms)
+			{
+				raidRooms.add(room.getName().toLowerCase());
+			}
 
 			// Required rooms must all be present; disallowed rooms must all be absent. Anything
 			// in neither list is ignored, so a raid is judged only on what was asked about.
@@ -360,28 +376,28 @@ public class AccessDeniedPlugin extends Plugin
 	}
 
 	/**
-	 * Chat output must happen on the client thread, but config edits arrive on the AWT event
-	 * thread — sending from there trips the client's own assertion and aborts the caller
-	 * mid-evaluation. invoke() still runs inline when already on the client thread.
+	 * The raid's combat and puzzle rooms. Farming, scavenger and empty rooms are deliberately
+	 * excluded: they are not what players filter raids on.
 	 */
-	/**
-	 * Lowercased names of the raid's combat and puzzle rooms. Farming, scavenger and empty
-	 * rooms are deliberately excluded: they are not what players filter raids on.
-	 */
-	private Set<String> combatAndPuzzleRoomNames()
+	private Set<RaidRoom> combatAndPuzzleRooms()
 	{
-		Set<String> names = new HashSet<>();
+		Set<RaidRoom> rooms = new HashSet<>();
 		for (Room layoutRoom : currentCoxRaid.getLayout().getRooms())
 		{
 			RaidRoom room = currentCoxRaid.getRoom(layoutRoom.getPosition());
 			if (room != null && (room.getType() == RoomType.COMBAT || room.getType() == RoomType.PUZZLE))
 			{
-				names.add(room.getName().toLowerCase());
+				rooms.add(room);
 			}
 		}
-		return names;
+		return rooms;
 	}
 
+	/**
+	 * Chat output must happen on the client thread, but config edits arrive on the AWT event
+	 * thread — sending from there trips the client's own assertion and aborts the caller
+	 * mid-evaluation. invoke() still runs inline when already on the client thread.
+	 */
 	private void sendChatMessage(String message)
 	{
 		clientThread.invoke(() -> client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", message, null));

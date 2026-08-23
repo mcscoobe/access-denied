@@ -70,7 +70,7 @@ public class AccessDeniedPlugin extends Plugin
 	protected void startUp()
 	{
 		resetState();
-		migrateLegacyCoxSpellConfig();
+		migrateLegacyConfig();
 	}
 
 	@Override
@@ -87,6 +87,35 @@ public class AccessDeniedPlugin extends Plugin
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
 		coxScoutingReleasedLayout = null;
+	}
+
+	/**
+	 * Brings a profile written by an older version up to date. Runs on start-up and on every
+	 * profile switch, since ConfigManager.switchProfile() never re-invokes startUp().
+	 */
+	private void migrateLegacyConfig()
+	{
+		// coxScoutWhitelistedRooms listed the rooms a raid was permitted to contain;
+		// coxScoutRequiredRooms lists the ones it must contain. Carrying the value across
+		// would reverse its meaning and produce a filter that can never match, so the old
+		// key is dropped rather than migrated.
+		if (configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutWhitelistedRooms") != null)
+		{
+			configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutWhitelistedRooms");
+		}
+
+		// The layout key was only renamed — its values still mean exactly what they did.
+		String legacyLayouts = configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutWhitelistedLayouts");
+		if (legacyLayouts != null)
+		{
+			if (configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutAllowedLayouts") == null)
+			{
+				configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutAllowedLayouts", legacyLayouts);
+			}
+			configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxScoutWhitelistedLayouts");
+		}
+
+		migrateLegacyCoxSpellConfig();
 	}
 
 	/**
@@ -188,7 +217,7 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		// ConfigManager.switchProfile() never re-invokes startUp(), so a profile with
 		// un-migrated legacy CoX keys would otherwise keep reading them as unset forever.
-		migrateLegacyCoxSpellConfig();
+		migrateLegacyConfig();
 	}
 
 	@Subscribe
@@ -277,7 +306,7 @@ public class AccessDeniedPlugin extends Plugin
 
 		Set<String> requiredRooms = new HashSet<>(Text.fromCSV(config.coxScoutRequiredRooms().toLowerCase()));
 		Set<String> disallowedRooms = new HashSet<>(Text.fromCSV(config.coxScoutDisallowedRooms().toLowerCase()));
-		List<String> layoutWhitelist = Text.fromCSV(config.coxScoutWhitelistedLayouts().toLowerCase());
+		List<String> layoutWhitelist = Text.fromCSV(config.coxScoutAllowedLayouts().toLowerCase());
 
 		if (requiredRooms.isEmpty() && disallowedRooms.isEmpty() && layoutWhitelist.isEmpty())
 		{

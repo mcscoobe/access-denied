@@ -538,7 +538,7 @@ class AccessDeniedPluginUnitTest
 		when(config.coxScoutingEnabled()).thenReturn(true);
 		when(config.coxScoutRequiredRooms()).thenReturn("");
 		when(config.coxScoutDisallowedRooms()).thenReturn("");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("fsccppcscf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
 		invokePrivate(plugin, "evaluateCoxScoutingRaid");
 
 		assertThat((boolean) getField(plugin, "coxScoutingRaidGood")).as("released raid must stay unlocked").isFalse();
@@ -610,7 +610,7 @@ class AccessDeniedPluginUnitTest
 		when(config.coxScoutingEnabled()).thenReturn(true);
 		when(config.coxScoutRequiredRooms()).thenReturn("");
 		when(config.coxScoutDisallowedRooms()).thenReturn("");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("");
+		when(config.coxScoutAllowedLayouts()).thenReturn("");
 	}
 
 	/**
@@ -643,7 +643,7 @@ class AccessDeniedPluginUnitTest
 		// A full code is its own prefix, so configs written before prefix matching existed
 		// must keep behaving identically.
 		stubScoutedRaid("FSCCPPCSCF");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("fsccppcscf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
 
 		assertThat(evaluateScoutedRaid()).as("a whitelisted full code must still lock the raid").isTrue();
 	}
@@ -652,7 +652,7 @@ class AccessDeniedPluginUnitTest
 	void testScoutingLayoutWhitelistMatchesFourLetterPrefix() throws Exception
 	{
 		stubScoutedRaid("FSCCPPCSCF");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("fscc, scpf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc, scpf");
 
 		assertThat(evaluateScoutedRaid()).as("a four-letter prefix must select the layout family").isTrue();
 	}
@@ -662,7 +662,7 @@ class AccessDeniedPluginUnitTest
 	{
 		// Guards against a scan that only ever looks at the first entry.
 		stubScoutedRaid("SCPFCCSPCF");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("fscc, scpf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc, scpf");
 
 		assertThat(evaluateScoutedRaid()).as("every entry must be considered, not just the first").isTrue();
 	}
@@ -671,7 +671,7 @@ class AccessDeniedPluginUnitTest
 	void testScoutingLayoutWhitelistRejectsUnlistedLayout() throws Exception
 	{
 		stubScoutedRaid("SCFCPCCSPF");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("fscc, scpf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc, scpf");
 
 		assertThat(evaluateScoutedRaid()).as("a layout matching no entry must stay unlocked").isFalse();
 	}
@@ -681,7 +681,7 @@ class AccessDeniedPluginUnitTest
 	{
 		// Matching is startsWith, not contains — a substring from the middle must not match.
 		stubScoutedRaid("FSCCPPCSCF");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("ppcscf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("ppcscf");
 
 		assertThat(evaluateScoutedRaid()).as("entries must anchor to the start of the code").isFalse();
 	}
@@ -691,7 +691,7 @@ class AccessDeniedPluginUnitTest
 	{
 		// A surviving empty entry would prefix-match every layout and lock every raid.
 		stubScoutedRaid("SCFCPCCSPF");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn(" fscc , ");
+		when(config.coxScoutAllowedLayouts()).thenReturn(" fscc , ");
 
 		assertThat(evaluateScoutedRaid()).as("blank entries must not match everything").isFalse();
 	}
@@ -703,7 +703,7 @@ class AccessDeniedPluginUnitTest
 		// other FSCC layout unprotected.
 		stubScoutedRaid("FSCCSPCPSF");
 		setField(plugin, "coxScoutingReleasedLayout", "FSCCPPCSCF");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("fscc");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
 
 		assertThat(evaluateScoutedRaid()).as("releasing one layout must not release its whole prefix family").isTrue();
 	}
@@ -717,7 +717,7 @@ class AccessDeniedPluginUnitTest
 		doNothing().when(clientThread).invoke(any(Runnable.class));
 
 		stubScoutedRaid("SCPFCCSPSF");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("fscc, scpf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc, scpf");
 
 		assertThat(evaluateScoutedRaid()).as("the lock must arm even if chat output is deferred").isTrue();
 		verify(clientThread, atLeastOnce()).invoke(any(Runnable.class));
@@ -814,7 +814,7 @@ class AccessDeniedPluginUnitTest
 		stubScoutedRaid("SCPFCCSPSF");
 		stubRaidRooms(RaidRoom.TIGHTROPE);
 		when(config.coxScoutRequiredRooms()).thenReturn("tightrope");
-		when(config.coxScoutWhitelistedLayouts()).thenReturn("fscc");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
 
 		assertThat(evaluateScoutedRaid()).as("rooms passing must not excuse a failing layout").isFalse();
 	}
@@ -839,6 +839,43 @@ class AccessDeniedPluginUnitTest
 		when(config.coxScoutDisallowedRooms()).thenReturn("vespula");
 
 		assertThat(evaluateScoutedRaid()).as("the same raid must lock once every room is known").isTrue();
+	}
+
+	@Example
+	void testStartUpDropsLegacyRoomWhitelistWithoutMigratingIt() throws Exception
+	{
+		// The key's meaning reversed, so the old value must be discarded, not carried over.
+		when(configManager.getConfiguration("accessdenied", "coxScoutWhitelistedRooms")).thenReturn("tightrope, vasa, vespula");
+
+		plugin.startUp();
+
+		verify(configManager).unsetConfiguration("accessdenied", "coxScoutWhitelistedRooms");
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxScoutRequiredRooms"), any());
+	}
+
+	@Example
+	void testStartUpCarriesLegacyLayoutWhitelistForward() throws Exception
+	{
+		// This key was only renamed, so the value still means what it did and must survive.
+		when(configManager.getConfiguration("accessdenied", "coxScoutWhitelistedLayouts")).thenReturn("fscc, scpf");
+		when(configManager.getConfiguration("accessdenied", "coxScoutAllowedLayouts")).thenReturn(null);
+
+		plugin.startUp();
+
+		verify(configManager).setConfiguration("accessdenied", "coxScoutAllowedLayouts", "fscc, scpf");
+		verify(configManager).unsetConfiguration("accessdenied", "coxScoutWhitelistedLayouts");
+	}
+
+	@Example
+	void testStartUpDoesNotOverwriteExplicitAllowedLayouts() throws Exception
+	{
+		when(configManager.getConfiguration("accessdenied", "coxScoutWhitelistedLayouts")).thenReturn("fscc");
+		when(configManager.getConfiguration("accessdenied", "coxScoutAllowedLayouts")).thenReturn("scpf");
+
+		plugin.startUp();
+
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxScoutAllowedLayouts"), any());
+		verify(configManager).unsetConfiguration("accessdenied", "coxScoutWhitelistedLayouts");
 	}
 
 	private void setField(Object target, String fieldName, Object value) throws Exception

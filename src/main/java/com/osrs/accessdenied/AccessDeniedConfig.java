@@ -316,14 +316,14 @@ public interface AccessDeniedConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "coxScoutWhitelistedLayouts",
-		name = "Whitelisted Layouts",
+		keyName = "coxScoutAllowedLayouts",
+		name = "Allowed Layouts",
 		description = "Layout codes the raid must start with. Full code (fsccppcscf) = one layout, partial "
 			+ "(fscc, scpf) = a family. Empty = no check.",
 		section = coxScoutingSection,
 		position = 3
 	)
-	default String coxScoutWhitelistedLayouts()
+	default String coxScoutAllowedLayouts()
 	{
 		return "";
 	}

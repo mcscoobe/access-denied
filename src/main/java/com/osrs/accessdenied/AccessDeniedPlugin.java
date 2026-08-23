@@ -15,6 +15,7 @@ import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.raids.Raid;
@@ -45,6 +46,10 @@ public class AccessDeniedPlugin extends Plugin
 	@Inject
 	private PlayerStateValidator playerStateValidator;
 
+	@SuppressWarnings("unused")
+	@Inject
+	private ConfigManager configManager;
+
 	private BossLocation currentLocation;
 	private int[] currentRegions;
 	private ValidationResult lastResult;
@@ -63,6 +68,57 @@ public class AccessDeniedPlugin extends Plugin
 		coxRaidActive = false;
 		currentCoxRaid = null;
 		coxScoutingRaidGood = false;
+		migrateLegacyCoxSpellConfig();
+	}
+
+	/**
+	 * Carries forward the four legacy CoX boolean toggles (coxRequireSpell/
+	 * coxRequireDeathCharge/coxRequireHumidify/coxRequireVengeance) into the
+	 * coxSpellRequirement enum they were replaced by, then removes the old keys. Without
+	 * this, users who had one of those toggles enabled would silently lose their CoX
+	 * requirement on upgrade, since nothing reads the old keys any more. A saved state
+	 * spanning both spellbooks (only possible before commit 2666029 enforced mutual
+	 * exclusion) falls back to the Arceuus half with a chat warning, rather than being
+	 * silently dropped to no requirement at all.
+	 */
+	private void migrateLegacyCoxSpellConfig()
+	{
+		String legacySpell = configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireSpell");
+		String legacyDeathCharge = configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireDeathCharge");
+		String legacyHumidify = configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireHumidify");
+		String legacyVengeance = configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireVengeance");
+
+		if (legacySpell == null && legacyDeathCharge == null && legacyHumidify == null && legacyVengeance == null)
+		{
+			return;
+		}
+
+		if (configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxSpellRequirement") == null)
+		{
+			boolean thralls = Boolean.parseBoolean(legacySpell);
+			boolean deathCharge = Boolean.parseBoolean(legacyDeathCharge);
+			boolean humidify = Boolean.parseBoolean(legacyHumidify);
+			boolean vengeance = Boolean.parseBoolean(legacyVengeance);
+
+			CoxSpellRequirement migrated = CoxSpellRequirement.fromLegacyFlags(thralls, deathCharge, humidify, vengeance);
+			if (migrated == null)
+			{
+				// Saved before spellbook conflicts were resolved (commit 2666029) and never
+				// re-touched since, so both groups are still enabled. Keep the Arceuus half
+				// and tell the player, rather than silently dropping the whole requirement.
+				migrated = CoxSpellRequirement.fromLegacyFlags(thralls, deathCharge, false, false);
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+					"<col=ff0000>Chambers of Xeric had conflicting spell requirements saved from an "
+					+ "older version (both Arceuus and Lunar spells required). Kept the Arceuus "
+					+ "requirement (" + migrated + ") — check the Access Denied config panel.</col>", null);
+			}
+			configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxSpellRequirement", migrated);
+		}
+
+		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireSpell");
+		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireDeathCharge");
+		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireHumidify");
+		configManager.unsetConfiguration(AccessDeniedConfig.CONFIG_GROUP, "coxRequireVengeance");
 	}
 
 	@Override
@@ -177,10 +233,19 @@ public class AccessDeniedPlugin extends Plugin
 		coxScoutingRaidGood = false;
 	}
 
+	@SuppressWarnings("unused")
+	@Subscribe
+	public void onProfileChanged(ProfileChanged event)
+	{
+		// ConfigManager.switchProfile() never re-invokes startUp(), so a profile with
+		// un-migrated legacy CoX keys would otherwise keep reading them as unset forever.
+		migrateLegacyCoxSpellConfig();
+	}
+
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (!"accessdenied".equals(event.getGroup()))
+		if (!AccessDeniedConfig.CONFIG_GROUP.equals(event.getGroup()))
 		{
 			return;
 		}
@@ -209,13 +274,29 @@ public class AccessDeniedPlugin extends Plugin
 
 		int objectId = event.getIdentifier();
 
-		if (!coxRaidActive && currentLocation != null && lastResult != null && !lastResult.isValid())
+		if (!coxRaidActive && currentLocation != null)
 		{
 			Integer validatedObjectId = BossLocations.getObjectForLocation(currentLocation);
 			if (validatedObjectId != null && validatedObjectId == objectId)
 			{
-				reorderMenuToWalkHere(client.getMenu().getMenuEntries());
-				return;
+				// The first menu open can happen before the first game tick has validated;
+				// compute on demand so right-clicking immediately on arrival is still protected.
+				// When validation isn't required, lastResult stays null and this cheap
+				// isValidationRequired check simply re-runs per event — onGameTick owns the
+				// cache lifecycle (it nulls lastResult every tick when validation is off), so
+				// there is no cache to populate here. lastResultWasValid is intentionally left
+				// untouched: onGameTick alone decides whether the chat warning fires, so an
+				// invalid result computed here doesn't get treated as "already warned about".
+				if (lastResult == null && isValidationRequired(currentLocation))
+				{
+					lastResult = validateLocationRequirements(currentLocation);
+				}
+
+				if (lastResult != null && !lastResult.isValid())
+				{
+					reorderMenuToWalkHere(client.getMenu().getMenuEntries());
+					return;
+				}
 			}
 		}
 
@@ -372,20 +453,6 @@ public class AccessDeniedPlugin extends Plugin
 
 	private void validateConfiguration(String configKey)
 	{
-		// Spellbook conflict check — fires on any CoX require* key change
-		if (configKey.startsWith("cox"))
-		{
-			boolean coxArceuusSpells = config.coxRequireSpell() || config.coxRequireDeathCharge();
-			boolean coxLunarSpells = config.coxRequireHumidify() || config.coxRequireVengeance();
-			if (coxArceuusSpells && coxLunarSpells)
-			{
-				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-					"<col=ff0000>Warning: Chambers of Xeric has conflicting spellbook requirements. " +
-					"Arceuus spells (Thralls/Death Charge) and Lunar spells (Humidify/Vengeance) cannot both be required.</col>",
-					null);
-			}
-		}
-
 		// No-requirements warning — fires only when a master Enabled toggle is turned on
 		if (!configKey.endsWith("Enabled"))
 		{
@@ -416,8 +483,7 @@ public class AccessDeniedPlugin extends Plugin
 		else if ("coxEnabled".equals(configKey) && config.coxEnabled())
 		{
 			locationName = "Chambers of Xeric";
-			hasRequirements = config.coxRequireSpell() || config.coxRequireDeathCharge()
-				|| config.coxRequireHumidify() || config.coxRequireVengeance()
+			hasRequirements = config.coxSpellRequirement() != CoxSpellRequirement.NONE
 				|| config.coxBanChugJug() || config.coxBanSaturatedHeart();
 		}
 		else if ("infernoEnabled".equals(configKey) && config.infernoEnabled())
@@ -431,7 +497,7 @@ public class AccessDeniedPlugin extends Plugin
 		{
 			String warningMessage = String.format(
 				"<col=ff0000>Warning: %s validation is enabled but no requirements are configured. " +
-				"Enable at least one requirement (Thralls or Death Charge) for validation to work.</col>",
+				"Enable at least one requirement for validation to work.</col>",
 				locationName
 			);
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", warningMessage, null);
@@ -477,75 +543,47 @@ public class AccessDeniedPlugin extends Plugin
 			if (!playerStateValidator.isOnArceuusSpellbook()) { missing.add("Arceuus spellbook"); }
 		}
 
-		if (banChugJug && playerStateValidator.hasChugJug())
-		{
-			missing.add("remove Chug Jug");
-		}
+		addBanChecks(missing, banChugJug, "remove Chug Jug", banSaturatedHeart);
 
-		if (banSaturatedHeart && playerStateValidator.hasSaturatedHeart())
-		{
-			missing.add("remove Saturated Heart");
-		}
-
-		if (missing.isEmpty())
-		{
-			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
-		}
-
-		String msg = "Missing: " + String.join(", ", missing);
-		return new ValidationResult(false, java.util.Collections.singleton(msg), msg);
+		return buildValidationResult(missing);
 	}
 
 	private ValidationResult validateCoxRequirements()
 	{
 		java.util.List<String> missing = new java.util.ArrayList<>();
 
-		boolean requireArceuus = config.coxRequireSpell() || config.coxRequireDeathCharge();
-		if (requireArceuus)
+		CoxSpellRequirement spellRequirement = config.coxSpellRequirement();
+
+		if (spellRequirement.requiresArceuus())
 		{
-			if (config.coxRequireSpell())
+			if (spellRequirement.requiresThralls())
 			{
 				if (!playerStateValidator.hasResurrectGreaterGhostRunes()) { missing.add("runes for Thralls"); }
 				if (!playerStateValidator.hasBookOfTheDead()) { missing.add("Book of the Dead"); }
 			}
-			if (config.coxRequireDeathCharge())
+			if (spellRequirement.requiresDeathCharge())
 			{
 				if (!playerStateValidator.hasDeathChargeRunes()) { missing.add("runes for Death Charge"); }
 			}
 			if (!playerStateValidator.isOnArceuusSpellbook()) { missing.add("Arceuus spellbook"); }
 		}
 
-		boolean requireLunar = config.coxRequireHumidify() || config.coxRequireVengeance();
-		if (requireLunar)
+		if (spellRequirement.requiresLunar())
 		{
-			if (config.coxRequireHumidify())
+			if (spellRequirement.requiresHumidify())
 			{
 				if (!playerStateValidator.hasHumidifyRunes()) { missing.add("runes for Humidify"); }
 			}
-			if (config.coxRequireVengeance())
+			if (spellRequirement.requiresVengeance())
 			{
 				if (!playerStateValidator.hasVengeanceRunes()) { missing.add("runes for Vengeance"); }
 			}
 			if (!playerStateValidator.isOnLunarSpellbook()) { missing.add("Lunar spellbook"); }
 		}
 
-		if (config.coxBanChugJug() && playerStateValidator.hasChugJug())
-		{
-			missing.add("remove Chugging Barrel");
-		}
+		addBanChecks(missing, config.coxBanChugJug(), "remove Chugging Barrel", config.coxBanSaturatedHeart());
 
-		if (config.coxBanSaturatedHeart() && playerStateValidator.hasSaturatedHeart())
-		{
-			missing.add("remove Saturated Heart");
-		}
-
-		if (missing.isEmpty())
-		{
-			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
-		}
-
-		String msg = "Missing: " + String.join(", ", missing);
-		return new ValidationResult(false, java.util.Collections.singleton(msg), msg);
+		return buildValidationResult(missing);
 	}
 
 	private ValidationResult validateInfernoRequirements()
@@ -567,16 +605,26 @@ public class AccessDeniedPlugin extends Plugin
 			if (!playerStateValidator.isOnAncientSpellbook()) { missing.add("Ancient spellbook"); }
 		}
 
-		if (config.infernoBanChugJug() && playerStateValidator.hasChugJug())
+		addBanChecks(missing, config.infernoBanChugJug(), "remove Chug Jug", config.infernoBanSaturatedHeart());
+
+		return buildValidationResult(missing);
+	}
+
+	private void addBanChecks(java.util.List<String> missing, boolean banChugJug, String chugJugMissingMessage, boolean banSaturatedHeart)
+	{
+		if (banChugJug && playerStateValidator.hasChugJug())
 		{
-			missing.add("remove Chug Jug");
+			missing.add(chugJugMissingMessage);
 		}
 
-		if (config.infernoBanSaturatedHeart() && playerStateValidator.hasSaturatedHeart())
+		if (banSaturatedHeart && playerStateValidator.hasSaturatedHeart())
 		{
 			missing.add("remove Saturated Heart");
 		}
+	}
 
+	private ValidationResult buildValidationResult(java.util.List<String> missing)
+	{
 		if (missing.isEmpty())
 		{
 			return new ValidationResult(true, java.util.Collections.emptySet(), "All requirements met");
@@ -605,8 +653,7 @@ public class AccessDeniedPlugin extends Plugin
 				return config.toaEnabled() && (config.toaRequireSpell() || config.toaRequireDeathCharge()
 					|| config.toaBanChugJug() || config.toaBanSaturatedHeart());
 			case "cox":
-				return config.coxEnabled() && (config.coxRequireSpell() || config.coxRequireDeathCharge()
-					|| config.coxRequireHumidify() || config.coxRequireVengeance()
+				return config.coxEnabled() && (config.coxSpellRequirement() != CoxSpellRequirement.NONE
 					|| config.coxBanChugJug() || config.coxBanSaturatedHeart());
 			case "inferno":
 				return config.infernoEnabled() && (config.infernoRequireIceBarrage() || config.infernoRequireBloodBarrage()

@@ -5,9 +5,11 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 
-@ConfigGroup("accessdenied")
+@ConfigGroup(AccessDeniedConfig.CONFIG_GROUP)
 public interface AccessDeniedConfig extends Config
 {
+	String CONFIG_GROUP = "accessdenied";
+
 	@ConfigSection(
 		name = "Nex",
 		description = "Configuration for Nex boss requirements",
@@ -30,7 +32,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "nexRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
 		section = nexSection,
 		position = 1
 	)
@@ -97,7 +99,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "tobRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
 		section = tobSection,
 		position = 1
 	)
@@ -164,7 +166,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "toaRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
 		section = toaSection,
 		position = 1
 	)
@@ -229,51 +231,19 @@ public interface AccessDeniedConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "coxRequireSpell",
-		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 4 Soul runes, 2 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Soul/Cosmic runes.",
+		keyName = "coxSpellRequirement",
+		name = "Required spell",
+		description = "Which spell to require at Chambers of Xeric. Thralls/Death Charge need the Arceuus spellbook; "
+			+ "Humidify/Vengeance need the Lunar spellbook. Only one spellbook can be required at a time, so the "
+			+ "choices are mutually exclusive. Thralls: 10 Fire, 5 Blood, 1 Cosmic rune + Book of the Dead. "
+			+ "Death Charge: 1 Death, 1 Blood, 1 Soul rune. Humidify: 1 Astral, 1 Fire, 1 Water rune. "
+			+ "Vengeance: 10 Earth, 4 Astral, 2 Death runes. Staves/tomes cover their element's rune; Aether substitutes for Soul/Cosmic.",
 		section = coxSection,
 		position = 1
 	)
-	default boolean coxRequireSpell()
+	default CoxSpellRequirement coxSpellRequirement()
 	{
-		return false;
-	}
-
-	@ConfigItem(
-		keyName = "coxRequireDeathCharge",
-		name = "Require Death Charge",
-		description = "Require the ability to cast Death Charge spell. Checks for: 1 Death rune, 1 Blood rune, 1 Soul rune, and Arceuus spellbook. Aether runes can substitute for Soul runes.",
-		section = coxSection,
-		position = 2
-	)
-	default boolean coxRequireDeathCharge()
-	{
-		return false;
-	}
-
-	@ConfigItem(
-		keyName = "coxRequireHumidify",
-		name = "Require Humidify",
-		description = "Require the ability to cast Humidify spell. Checks for: 1 Astral rune, 1 Fire rune, 1 Water rune, and Lunar spellbook.",
-		section = coxSection,
-		position = 3
-	)
-	default boolean coxRequireHumidify()
-	{
-		return false;
-	}
-
-	@ConfigItem(
-		keyName = "coxRequireVengeance",
-		name = "Require Vengeance",
-		description = "Require the ability to cast Vengeance spell. Checks for: 10 Earth runes, 4 Astral runes, 2 Death runes, and Lunar spellbook.",
-		section = coxSection,
-		position = 4
-	)
-	default boolean coxRequireVengeance()
-	{
-		return false;
+		return CoxSpellRequirement.NONE;
 	}
 
 	@ConfigItem(
@@ -322,7 +292,10 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "coxScoutWhitelistedRooms",
 		name = "Whitelisted Rooms",
-		description = "Comma-separated list of acceptable room names (e.g. Vespula, Vasa Nistirio). Every room in the raid must appear in this list for the raid to be considered good. Leave empty to skip the room check.",
+		description = "Comma-separated list of acceptable combat and puzzle room names (e.g. Vespula, Vasa, Tightrope). "
+			+ "Only combat and puzzle rooms are checked, and every one in the raid must appear in this list for the raid "
+			+ "to be considered good. Names must match the client's room names exactly — \"Vasa\", not \"Vasa Nistirio\". "
+			+ "Leave empty to skip the room check.",
 		section = coxScoutingSection,
 		position = 1
 	)
@@ -334,7 +307,9 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "coxScoutWhitelistedLayouts",
 		name = "Whitelisted Layouts",
-		description = "Comma-separated list of acceptable layout codes (e.g. fscav). The raid layout code must appear in this list for the raid to be considered good. Leave empty to skip the layout check.",
+		description = "Comma-separated list of acceptable layout codes (e.g. fsccppcscf). Layout codes are built only from "
+			+ "the letters F, S, C and P (farming, scavengers, combat, puzzle). The raid layout code must appear in this "
+			+ "list for the raid to be considered good. Leave empty to skip the layout check.",
 		section = coxScoutingSection,
 		position = 2
 	)
@@ -365,7 +340,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "infernoRequireIceBarrage",
 		name = "Require Ice Barrage",
-		description = "Require the ability to cast Ice Barrage spell. Checks for: 6 Water runes, 2 Death runes, 4 Blood runes, and Ancient spellbook. Kodai wand provides infinite water runes.",
+		description = "Require the ability to cast Ice Barrage spell. Checks for: 6 Water runes, 2 Death runes, 4 Blood runes, and Ancient spellbook. The Kodai wand, water staves, and the Tome of Water cover the Water runes.",
 		section = infernoSection,
 		position = 1
 	)
@@ -377,7 +352,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "infernoRequireBloodBarrage",
 		name = "Require Blood Barrage",
-		description = "Require the ability to cast Blood Barrage spell. Checks for: 4 Blood runes, 1 Soul rune, 1 Death rune, and Ancient spellbook. Aether runes can substitute for Soul runes.",
+		description = "Require the ability to cast Blood Barrage spell. Checks for: 4 Blood runes, 1 Soul rune, 4 Death runes, and Ancient spellbook. Aether runes can substitute for Soul runes.",
 		section = infernoSection,
 		position = 2
 	)

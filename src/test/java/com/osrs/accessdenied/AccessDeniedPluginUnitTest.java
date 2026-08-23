@@ -5,12 +5,15 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Menu;
 import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
 import net.runelite.api.WorldView;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.ProfileChanged;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -39,7 +42,6 @@ public class AccessDeniedPluginUnitTest
 	@Mock
 	private PlayerStateValidator validator;
 
-	@SuppressWarnings("unused")
 	@Mock
 	private ConfigManager configManager;
 
@@ -71,6 +73,7 @@ public class AccessDeniedPluginUnitTest
 		setField(plugin, "client", client);
 		setField(plugin, "config", config);
 		setField(plugin, "playerStateValidator", validator);
+		setField(plugin, "configManager", configManager);
 
 		// Setup default mocks
 		when(client.getLocalPlayer()).thenReturn(player);
@@ -88,6 +91,81 @@ public class AccessDeniedPluginUnitTest
 		assertNull(getField(plugin, "currentRegions"));
 		assertNull(getField(plugin, "lastResult"));
 		assertTrue(getField(plugin, "lastResultWasValid"));
+	}
+
+	@Test
+	public void testStartUpMigratesLegacyCoxSpellConfig() throws Exception
+	{
+		when(configManager.getConfiguration("accessdenied", "coxRequireSpell")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxRequireDeathCharge")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxRequireHumidify")).thenReturn("false");
+		when(configManager.getConfiguration("accessdenied", "coxRequireVengeance")).thenReturn("false");
+		when(configManager.getConfiguration("accessdenied", "coxSpellRequirement")).thenReturn(null);
+
+		plugin.startUp();
+
+		verify(configManager).setConfiguration("accessdenied", "coxSpellRequirement", CoxSpellRequirement.THRALLS_AND_DEATH_CHARGE);
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireSpell");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireDeathCharge");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireHumidify");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireVengeance");
+	}
+
+	@Test
+	public void testStartUpMigrationResolvesCrossSpellbookLegacyConflictToArceuus() throws Exception
+	{
+		// Saved before the mutual-exclusion fix (commit 2666029): both an Arceuus and a
+		// Lunar toggle are enabled at once. The migration must not silently drop everything.
+		when(configManager.getConfiguration("accessdenied", "coxRequireSpell")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxRequireDeathCharge")).thenReturn("false");
+		when(configManager.getConfiguration("accessdenied", "coxRequireHumidify")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxRequireVengeance")).thenReturn("false");
+		when(configManager.getConfiguration("accessdenied", "coxSpellRequirement")).thenReturn(null);
+
+		plugin.startUp();
+
+		verify(configManager).setConfiguration("accessdenied", "coxSpellRequirement", CoxSpellRequirement.THRALLS);
+		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""), anyString(), isNull());
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireSpell");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireDeathCharge");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireHumidify");
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireVengeance");
+	}
+
+	@Test
+	public void testStartUpSkipsMigrationWhenNoLegacyKeysPresent() throws Exception
+	{
+		plugin.startUp();
+
+		verify(configManager, never()).setConfiguration(anyString(), anyString(), any());
+		verify(configManager, never()).unsetConfiguration(anyString(), anyString());
+	}
+
+	@Test
+	public void testStartUpMigrationDoesNotOverwriteExplicitCoxSpellRequirement() throws Exception
+	{
+		when(configManager.getConfiguration("accessdenied", "coxRequireSpell")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxSpellRequirement")).thenReturn("VENGEANCE");
+
+		plugin.startUp();
+
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxSpellRequirement"), any());
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireSpell");
+	}
+
+	@Test
+	public void testOnProfileChangedRerunsLegacyCoxSpellMigration() throws Exception
+	{
+		// ConfigManager.switchProfile() never re-invokes startUp(), so a profile switch
+		// must independently re-trigger migration for the newly active profile's data.
+		when(configManager.getConfiguration("accessdenied", "coxRequireVengeance")).thenReturn("true");
+		when(configManager.getConfiguration("accessdenied", "coxSpellRequirement")).thenReturn(null);
+
+		ProfileChanged event = mock(ProfileChanged.class);
+		plugin.onProfileChanged(event);
+
+		verify(configManager).setConfiguration("accessdenied", "coxSpellRequirement", CoxSpellRequirement.VENGEANCE);
+		verify(configManager).unsetConfiguration("accessdenied", "coxRequireVengeance");
 	}
 
 	@Test
@@ -285,10 +363,7 @@ public class AccessDeniedPluginUnitTest
 	public void testIsValidationRequiredWithCoxHumidify() throws Exception
 	{
 		when(config.coxEnabled()).thenReturn(true);
-		when(config.coxRequireSpell()).thenReturn(false);
-		when(config.coxRequireDeathCharge()).thenReturn(false);
-		when(config.coxRequireHumidify()).thenReturn(true);
-		when(config.coxRequireVengeance()).thenReturn(false);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.HUMIDIFY);
 
 		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
 		isValidationRequired.setAccessible(true);
@@ -301,10 +376,7 @@ public class AccessDeniedPluginUnitTest
 	public void testIsValidationRequiredWithCoxVengeance() throws Exception
 	{
 		when(config.coxEnabled()).thenReturn(true);
-		when(config.coxRequireSpell()).thenReturn(false);
-		when(config.coxRequireDeathCharge()).thenReturn(false);
-		when(config.coxRequireHumidify()).thenReturn(false);
-		when(config.coxRequireVengeance()).thenReturn(true);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.VENGEANCE);
 
 		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
 		isValidationRequired.setAccessible(true);
@@ -317,10 +389,7 @@ public class AccessDeniedPluginUnitTest
 	public void testIsValidationRequiredWithCoxNoRequirements() throws Exception
 	{
 		when(config.coxEnabled()).thenReturn(true);
-		when(config.coxRequireSpell()).thenReturn(false);
-		when(config.coxRequireDeathCharge()).thenReturn(false);
-		when(config.coxRequireHumidify()).thenReturn(false);
-		when(config.coxRequireVengeance()).thenReturn(false);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.NONE);
 
 		Method isValidationRequired = plugin.getClass().getDeclaredMethod("isValidationRequired", BossLocation.class);
 		isValidationRequired.setAccessible(true);
@@ -330,47 +399,77 @@ public class AccessDeniedPluginUnitTest
 	}
 
 	@Test
-	public void testValidateConfigurationShowsConflictWarningForCox() throws Exception
+	public void testCoxValidationPassesForArceuusComboWhenSatisfied() throws Exception
 	{
-		// Both Arceuus and Lunar spells enabled — conflict
-		when(config.coxRequireSpell()).thenReturn(true);
-		when(config.coxRequireDeathCharge()).thenReturn(false);
-		when(config.coxRequireHumidify()).thenReturn(true);
-		when(config.coxRequireVengeance()).thenReturn(false);
+		// THRALLS_AND_DEATH_CHARGE requires both Arceuus spells plus the Arceuus spellbook.
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.THRALLS_AND_DEATH_CHARGE);
+		when(validator.hasResurrectGreaterGhostRunes()).thenReturn(true);
+		when(validator.hasBookOfTheDead()).thenReturn(true);
+		when(validator.hasDeathChargeRunes()).thenReturn(true);
+		when(validator.isOnArceuusSpellbook()).thenReturn(true);
 
-		Method validateConfiguration = plugin.getClass().getDeclaredMethod("validateConfiguration", String.class);
-		validateConfiguration.setAccessible(true);
+		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
 
-		validateConfiguration.invoke(plugin, "coxRequireHumidify");
-
-		ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
-		verify(client).addChatMessage(
-			eq(ChatMessageType.GAMEMESSAGE),
-			eq(""),
-			messageCaptor.capture(),
-			isNull()
-		);
-
-		String message = messageCaptor.getValue();
-		assertTrue(message.contains("conflicting spellbook"));
-		assertTrue(message.contains("Chambers of Xeric"));
+		assertTrue("Arceuus combo should pass when fully satisfied", result.isValid());
+		verify(validator).hasDeathChargeRunes();
+		verify(validator).isOnArceuusSpellbook();
+		// Lunar checks must not run for an Arceuus selection.
+		verify(validator, never()).hasHumidifyRunes();
+		verify(validator, never()).isOnLunarSpellbook();
 	}
 
 	@Test
-	public void testValidateConfigurationNoConflictWarningWhenOnlyLunarSpells() throws Exception
+	public void testCoxValidationFailsWhenArceuusSpellbookMissing() throws Exception
 	{
-		when(config.coxRequireSpell()).thenReturn(false);
-		when(config.coxRequireDeathCharge()).thenReturn(false);
-		when(config.coxRequireHumidify()).thenReturn(true);
-		when(config.coxRequireVengeance()).thenReturn(false);
-		when(config.coxEnabled()).thenReturn(true);
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.THRALLS);
+		when(validator.hasResurrectGreaterGhostRunes()).thenReturn(true);
+		when(validator.hasBookOfTheDead()).thenReturn(true);
+		when(validator.isOnArceuusSpellbook()).thenReturn(false);
 
-		Method validateConfiguration = plugin.getClass().getDeclaredMethod("validateConfiguration", String.class);
-		validateConfiguration.setAccessible(true);
+		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
 
-		validateConfiguration.invoke(plugin, "coxRequireHumidify");
+		assertFalse("Should fail when not on the Arceuus spellbook", result.isValid());
+	}
 
-		verify(client, never()).addChatMessage(any(), any(), any(), any());
+	@Test
+	public void testCoxValidationChecksLunarPathForVengeance() throws Exception
+	{
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.VENGEANCE);
+		when(validator.hasVengeanceRunes()).thenReturn(true);
+		when(validator.isOnLunarSpellbook()).thenReturn(true);
+
+		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
+
+		assertTrue("Vengeance should pass when runes and Lunar spellbook are present", result.isValid());
+		verify(validator).hasVengeanceRunes();
+		verify(validator).isOnLunarSpellbook();
+		// Arceuus checks must not run for a Lunar selection.
+		verify(validator, never()).hasResurrectGreaterGhostRunes();
+		verify(validator, never()).isOnArceuusSpellbook();
+	}
+
+	@Test
+	public void testCoxValidationPassesWithNoneAndNoBans() throws Exception
+	{
+		// NONE with no bans is satisfiable and must not query any spell requirements.
+		when(config.coxSpellRequirement()).thenReturn(CoxSpellRequirement.NONE);
+
+		ValidationResult result = invokeValidateLocation(BossLocations.CHAMBERS_OF_XERIC);
+
+		assertTrue("NONE with no bans should be valid", result.isValid());
+		verify(validator, never()).hasResurrectGreaterGhostRunes();
+		verify(validator, never()).hasDeathChargeRunes();
+		verify(validator, never()).hasHumidifyRunes();
+		verify(validator, never()).hasVengeanceRunes();
+		verify(validator, never()).isOnArceuusSpellbook();
+		verify(validator, never()).isOnLunarSpellbook();
+	}
+
+	private ValidationResult invokeValidateLocation(BossLocation location) throws Exception
+	{
+		Method validate = plugin.getClass().getDeclaredMethod("validateLocationRequirements", BossLocation.class);
+		validate.setAccessible(true);
+		return (ValidationResult) validate.invoke(plugin, location);
 	}
 
 	@Test
@@ -399,6 +498,117 @@ public class AccessDeniedPluginUnitTest
 		// Should not modify menu
 		verify(menu, never()).getMenuEntries();
 
+	}
+
+	@Test
+	public void testOnMenuEntryAddedValidatesOnDemandAndReordersWhenInvalid() throws Exception
+	{
+		// At a validated object on the arrival tick, lastResult is still null — the handler
+		// must validate on demand and, finding the state invalid, reorder the menu.
+		setField(plugin, "currentLocation", BossLocations.NEX);
+		setField(plugin, "lastResult", null);
+
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexRequireSpell()).thenReturn(true);
+		// validator mock returns false by default, so validation is invalid
+
+		MenuEntry walkEntry = mock(MenuEntry.class);
+		when(walkEntry.getType()).thenReturn(MenuAction.WALK);
+		MenuEntry objectEntry = mock(MenuEntry.class);
+		when(objectEntry.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{walkEntry, objectEntry});
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		ValidationResult cached = getField(plugin, "lastResult");
+		assertNotNull("on-demand validation should cache a result", cached);
+		assertFalse("cached result should be invalid", cached.isValid());
+		verify(menu).setMenuEntries(any());
+	}
+
+	@Test
+	public void testOnMenuEntryAddedOnDemandInvalidDoesNotSuppressNextGameTickWarning() throws Exception
+	{
+		// Regression test: onMenuEntryAdded's on-demand validation must not mark the
+		// invalid result as "already warned about" — onGameTick alone decides when the
+		// chat warning fires, so it must still fire on the very next tick.
+		setField(plugin, "currentLocation", BossLocations.NEX);
+		setField(plugin, "lastResult", null);
+		setField(plugin, "lastResultWasValid", true);
+
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexRequireSpell()).thenReturn(true);
+		// validator mock returns false by default, so validation is invalid
+
+		MenuEntry walkEntry = mock(MenuEntry.class);
+		when(walkEntry.getType()).thenReturn(MenuAction.WALK);
+		MenuEntry objectEntry = mock(MenuEntry.class);
+		when(objectEntry.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{walkEntry, objectEntry});
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		assertTrue("lastResultWasValid must stay true so onGameTick still fires the warning",
+			(boolean) getField(plugin, "lastResultWasValid"));
+
+		plugin.onGameTick(mock(GameTick.class));
+
+		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""), anyString(), isNull());
+	}
+
+	@Test
+	public void testOnMenuEntryAddedOnDemandDoesNotReorderWhenValid() throws Exception
+	{
+		setField(plugin, "currentLocation", BossLocations.NEX);
+		setField(plugin, "lastResult", null);
+
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexRequireSpell()).thenReturn(true);
+		// Make the on-demand validation pass
+		when(validator.hasResurrectGreaterGhostRunes()).thenReturn(true);
+		when(validator.hasBookOfTheDead()).thenReturn(true);
+		when(validator.isOnArceuusSpellbook()).thenReturn(true);
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		ValidationResult cached = getField(plugin, "lastResult");
+		assertNotNull("on-demand validation should cache a result", cached);
+		assertTrue("cached result should be valid", cached.isValid());
+		verify(menu, never()).setMenuEntries(any());
+	}
+
+	@Test
+	public void testOnMenuEntryAddedSkipsOnDemandDuringActiveCoxRaid() throws Exception
+	{
+		// An active CoX raid short-circuits the on-demand block entirely.
+		setField(plugin, "currentLocation", BossLocations.NEX);
+		setField(plugin, "lastResult", null);
+		setField(plugin, "coxRaidActive", true);
+
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexRequireSpell()).thenReturn(true);
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocations.NEX_OBJECT);
+
+		plugin.onMenuEntryAdded(event);
+
+		assertNull("no validation should occur during an active raid", getField(plugin, "lastResult"));
+		verify(validator, never()).hasResurrectGreaterGhostRunes();
+		verify(menu, never()).setMenuEntries(any());
 	}
 
 	// Helper methods for reflection

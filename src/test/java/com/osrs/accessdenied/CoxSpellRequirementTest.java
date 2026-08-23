@@ -1,112 +1,111 @@
 package com.osrs.accessdenied;
 
-import org.junit.Test;
+import net.jqwik.api.Example;
 
-import static org.junit.Assert.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit tests for the CoxSpellRequirement enum.
  * Verifies the per-spell flags, the Arceuus/Lunar groupings, the dropdown labels,
  * and the core invariant that no value requires both spellbooks at once.
  */
-public class CoxSpellRequirementTest
+class CoxSpellRequirementTest
 {
-	@Test
-	public void noneRequiresNothing()
+	@Example
+	void noneRequiresNothing()
 	{
 		CoxSpellRequirement none = CoxSpellRequirement.NONE;
-		assertFalse(none.requiresThralls());
-		assertFalse(none.requiresDeathCharge());
-		assertFalse(none.requiresHumidify());
-		assertFalse(none.requiresVengeance());
-		assertFalse(none.requiresArceuus());
-		assertFalse(none.requiresLunar());
+		assertThat(none.requiresThralls()).isFalse();
+		assertThat(none.requiresDeathCharge()).isFalse();
+		assertThat(none.requiresHumidify()).isFalse();
+		assertThat(none.requiresVengeance()).isFalse();
+		assertThat(none.requiresArceuus()).isFalse();
+		assertThat(none.requiresLunar()).isFalse();
 	}
 
-	@Test
-	public void thrallsRequiresOnlyThrallsOnArceuus()
+	@Example
+	void thrallsRequiresOnlyThrallsOnArceuus()
 	{
 		CoxSpellRequirement thralls = CoxSpellRequirement.THRALLS;
-		assertTrue(thralls.requiresThralls());
-		assertFalse(thralls.requiresDeathCharge());
-		assertTrue(thralls.requiresArceuus());
-		assertFalse(thralls.requiresLunar());
+		assertThat(thralls.requiresThralls()).isTrue();
+		assertThat(thralls.requiresDeathCharge()).isFalse();
+		assertThat(thralls.requiresArceuus()).isTrue();
+		assertThat(thralls.requiresLunar()).isFalse();
 	}
 
-	@Test
-	public void deathChargeRequiresOnlyDeathChargeOnArceuus()
+	@Example
+	void deathChargeRequiresOnlyDeathChargeOnArceuus()
 	{
 		CoxSpellRequirement dc = CoxSpellRequirement.DEATH_CHARGE;
-		assertTrue(dc.requiresDeathCharge());
-		assertFalse(dc.requiresThralls());
-		assertTrue(dc.requiresArceuus());
-		assertFalse(dc.requiresLunar());
+		assertThat(dc.requiresDeathCharge()).isTrue();
+		assertThat(dc.requiresThralls()).isFalse();
+		assertThat(dc.requiresArceuus()).isTrue();
+		assertThat(dc.requiresLunar()).isFalse();
 	}
 
-	@Test
-	public void thrallsAndDeathChargeRequiresBothArceuusSpells()
+	@Example
+	void thrallsAndDeathChargeRequiresBothArceuusSpells()
 	{
 		CoxSpellRequirement combo = CoxSpellRequirement.THRALLS_AND_DEATH_CHARGE;
-		assertTrue(combo.requiresThralls());
-		assertTrue(combo.requiresDeathCharge());
-		assertTrue(combo.requiresArceuus());
-		assertFalse(combo.requiresLunar());
+		assertThat(combo.requiresThralls()).isTrue();
+		assertThat(combo.requiresDeathCharge()).isTrue();
+		assertThat(combo.requiresArceuus()).isTrue();
+		assertThat(combo.requiresLunar()).isFalse();
 	}
 
-	@Test
-	public void humidifyRequiresOnlyHumidifyOnLunar()
+	@Example
+	void humidifyRequiresOnlyHumidifyOnLunar()
 	{
 		CoxSpellRequirement humidify = CoxSpellRequirement.HUMIDIFY;
-		assertTrue(humidify.requiresHumidify());
-		assertFalse(humidify.requiresVengeance());
-		assertTrue(humidify.requiresLunar());
-		assertFalse(humidify.requiresArceuus());
+		assertThat(humidify.requiresHumidify()).isTrue();
+		assertThat(humidify.requiresVengeance()).isFalse();
+		assertThat(humidify.requiresLunar()).isTrue();
+		assertThat(humidify.requiresArceuus()).isFalse();
 	}
 
-	@Test
-	public void vengeanceRequiresOnlyVengeanceOnLunar()
+	@Example
+	void vengeanceRequiresOnlyVengeanceOnLunar()
 	{
 		CoxSpellRequirement veng = CoxSpellRequirement.VENGEANCE;
-		assertTrue(veng.requiresVengeance());
-		assertFalse(veng.requiresHumidify());
-		assertTrue(veng.requiresLunar());
-		assertFalse(veng.requiresArceuus());
+		assertThat(veng.requiresVengeance()).isTrue();
+		assertThat(veng.requiresHumidify()).isFalse();
+		assertThat(veng.requiresLunar()).isTrue();
+		assertThat(veng.requiresArceuus()).isFalse();
 	}
 
-	@Test
-	public void humidifyAndVengeanceRequiresBothLunarSpells()
+	@Example
+	void humidifyAndVengeanceRequiresBothLunarSpells()
 	{
 		CoxSpellRequirement combo = CoxSpellRequirement.HUMIDIFY_AND_VENGEANCE;
-		assertTrue(combo.requiresHumidify());
-		assertTrue(combo.requiresVengeance());
-		assertTrue(combo.requiresLunar());
-		assertFalse(combo.requiresArceuus());
+		assertThat(combo.requiresHumidify()).isTrue();
+		assertThat(combo.requiresVengeance()).isTrue();
+		assertThat(combo.requiresLunar()).isTrue();
+		assertThat(combo.requiresArceuus()).isFalse();
 	}
 
 	/**
 	 * The invariant the whole redesign relies on: a single value can never demand spells
 	 * from both spellbooks, so an unsatisfiable cross-spellbook conflict cannot be expressed.
 	 */
-	@Test
-	public void noValueRequiresBothSpellbooks()
+	@Example
+	void noValueRequiresBothSpellbooks()
 	{
 		for (CoxSpellRequirement value : CoxSpellRequirement.values())
 		{
-			assertFalse(
-				value + " must not require both Arceuus and Lunar spellbooks",
-				value.requiresArceuus() && value.requiresLunar());
+			assertThat(value.requiresArceuus() && value.requiresLunar())
+				.as(value + " must not require both Arceuus and Lunar spellbooks").isFalse();
 		}
 	}
 
-	@Test
-	public void displayNamesAreHumanReadable()
+	@Example
+	void displayNamesAreHumanReadable()
 	{
-		assertEquals("None", CoxSpellRequirement.NONE.toString());
-		assertEquals("Thralls", CoxSpellRequirement.THRALLS.toString());
-		assertEquals("Death Charge", CoxSpellRequirement.DEATH_CHARGE.toString());
-		assertEquals("Thralls + Death Charge", CoxSpellRequirement.THRALLS_AND_DEATH_CHARGE.toString());
-		assertEquals("Humidify", CoxSpellRequirement.HUMIDIFY.toString());
-		assertEquals("Vengeance", CoxSpellRequirement.VENGEANCE.toString());
-		assertEquals("Humidify + Vengeance", CoxSpellRequirement.HUMIDIFY_AND_VENGEANCE.toString());
+		assertThat(CoxSpellRequirement.NONE.toString()).isEqualTo("None");
+		assertThat(CoxSpellRequirement.THRALLS.toString()).isEqualTo("Thralls");
+		assertThat(CoxSpellRequirement.DEATH_CHARGE.toString()).isEqualTo("Death Charge");
+		assertThat(CoxSpellRequirement.THRALLS_AND_DEATH_CHARGE.toString()).isEqualTo("Thralls + Death Charge");
+		assertThat(CoxSpellRequirement.HUMIDIFY.toString()).isEqualTo("Humidify");
+		assertThat(CoxSpellRequirement.VENGEANCE.toString()).isEqualTo("Vengeance");
+		assertThat(CoxSpellRequirement.HUMIDIFY_AND_VENGEANCE.toString()).isEqualTo("Humidify + Vengeance");
 	}
 }

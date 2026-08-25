@@ -1,2 +1,24 @@
-* text eol=lf
+# Normalise line endings so the repo always stores LF, regardless of platform.
+#
+# `text=auto` (not a bare `text`) is deliberate: a bare `text` forces every file
+# through the line-ending filter and disables git's binary detection, which
+# silently corrupts binaries such as gradle-wrapper.jar on renormalise or on a
+# fresh checkout. `=auto` normalises only what git detects as text.
+* text=auto eol=lf
+
+# Windows-native scripts must keep CRLF in the working tree or cmd.exe misparses them.
 *.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Must stay LF even on Windows — these run under sh.
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Never line-ending-convert these, whatever the content sniffing decides.
+*.jar binary
+*.zip binary
+*.class binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary

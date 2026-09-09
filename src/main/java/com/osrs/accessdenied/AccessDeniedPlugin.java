@@ -25,7 +25,11 @@ import net.runelite.client.plugins.raids.RoomType;
 import net.runelite.client.plugins.raids.events.RaidReset;
 import net.runelite.client.plugins.raids.events.RaidScouted;
 import net.runelite.client.plugins.raids.solver.Room;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.Text;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -54,6 +58,17 @@ public class AccessDeniedPlugin extends Plugin
 	@Inject
 	private ClientThread clientThread;
 
+	@Inject
+	private ClientToolbar clientToolbar;
+
+	@Inject
+	private NpcHider npcHider;
+
+	@Inject
+	private AccessDeniedPanel panel;
+
+	private NavigationButton navButton;
+
 	private BossLocation currentLocation;
 
 	/**
@@ -71,12 +86,46 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		resetState();
 		migrateLegacyConfig();
+
+		npcHider.startUp();
+		applyHideNpcs();
+
+		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "panel_icon.png");
+		navButton = NavigationButton.builder()
+			.tooltip("Access Denied")
+			.icon(icon)
+			.priority(7)
+			.panel(panel)
+			.build();
+
+		clientToolbar.addNavigation(navButton);
 	}
 
 	@Override
 	protected void shutDown()
 	{
 		resetState();
+
+		// PluginManager calls shutDown() after a startUp() that threw, so the button may never
+		// have been built. ClientUI.removeNavigation dereferences its argument.
+		if (navButton != null)
+		{
+			clientToolbar.removeNavigation(navButton);
+			navButton = null;
+		}
+
+		npcHider.shutDown();
+	}
+
+	/**
+	 * Pushes the stored Hide NPCs value into the renderer and back into the side panel, so
+	 * the two agree no matter which of them (or which profile) changed it.
+	 */
+	private void applyHideNpcs()
+	{
+		boolean hideNpcs = config.hideNpcs();
+		npcHider.setHideNpcs(hideNpcs);
+		panel.setHideNpcs(hideNpcs);
 	}
 
 	private void resetState()
@@ -218,6 +267,10 @@ public class AccessDeniedPlugin extends Plugin
 		// ConfigManager.switchProfile() never re-invokes startUp(), so a profile with
 		// un-migrated legacy CoX keys would otherwise keep reading them as unset forever.
 		migrateLegacyConfig();
+
+		// A profile switch replaces every value at once without raising a ConfigChanged per
+		// key, so the panel and renderer have to be re-read from the new profile here.
+		applyHideNpcs();
 	}
 
 	@Subscribe
@@ -225,6 +278,15 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		if (!AccessDeniedConfig.CONFIG_GROUP.equals(event.getGroup()))
 		{
+			return;
+		}
+
+		// Returns rather than falling through: the reset below re-arms the "Missing: ..."
+		// chat warning, so without this every click of the sidebar toggle would repeat a
+		// warning the player has already been given.
+		if (AccessDeniedConfig.HIDE_NPCS_KEY.equals(event.getKey()))
+		{
+			applyHideNpcs();
 			return;
 		}
 

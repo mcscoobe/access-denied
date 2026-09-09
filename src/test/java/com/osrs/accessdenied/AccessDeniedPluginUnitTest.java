@@ -23,6 +23,8 @@ import net.runelite.client.plugins.raids.Raid;
 import net.runelite.client.plugins.raids.RaidRoom;
 import net.runelite.client.plugins.raids.solver.Layout;
 import net.runelite.client.plugins.raids.solver.Room;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -66,6 +68,15 @@ class AccessDeniedPluginUnitTest
 	@Mock
 	private WorldView worldView;
 
+	@Mock
+	private NpcHider npcHider;
+
+	@Mock
+	private AccessDeniedPanel panel;
+
+	@Mock
+	private ClientToolbar clientToolbar;
+
 	private AccessDeniedPlugin plugin;
 	private AutoCloseable mocks;
 
@@ -87,6 +98,9 @@ class AccessDeniedPluginUnitTest
 		setField(plugin, "playerStateValidator", validator);
 		setField(plugin, "configManager", configManager);
 		setField(plugin, "clientThread", clientThread);
+		setField(plugin, "npcHider", npcHider);
+		setField(plugin, "panel", panel);
+		setField(plugin, "clientToolbar", clientToolbar);
 
 		// Setup default mocks
 		when(client.getLocalPlayer()).thenReturn(player);
@@ -876,6 +890,100 @@ class AccessDeniedPluginUnitTest
 
 		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("coxScoutAllowedLayouts"), any());
 		verify(configManager).unsetConfiguration("accessdenied", "coxScoutWhitelistedLayouts");
+	}
+
+	@Example
+	void testStartUpRegistersTheHiderAndAddsTheSidePanel()
+	{
+		when(config.hideNpcs()).thenReturn(true);
+
+		plugin.startUp();
+
+		verify(npcHider).startUp();
+		verify(npcHider).setHideNpcs(true);
+		verify(panel).setHideNpcs(true);
+
+		ArgumentCaptor<NavigationButton> navButton = ArgumentCaptor.forClass(NavigationButton.class);
+		verify(clientToolbar).addNavigation(navButton.capture());
+		assertThat(navButton.getValue().getPanel()).isSameAs(panel);
+		assertThat(navButton.getValue().getIcon()).isNotNull();
+	}
+
+	@Example
+	void testShutDownRemovesTheSidePanelAndTheHider()
+	{
+		plugin.startUp();
+		plugin.shutDown();
+
+		verify(clientToolbar).removeNavigation(any(NavigationButton.class));
+		verify(npcHider).shutDown();
+	}
+
+	@Example
+	void testShutDownAfterAFailedStartUpRemovesNoNavigation()
+	{
+		// PluginManager calls shutDown() when startUp() throws, and ClientUI.removeNavigation
+		// dereferences the button it is handed.
+		plugin.shutDown();
+
+		verify(clientToolbar, never()).removeNavigation(any());
+		verify(npcHider).shutDown();
+	}
+
+	@Example
+	void testHideNpcsConfigChangeReachesTheHiderAndThePanel()
+	{
+		when(config.hideNpcs()).thenReturn(true);
+
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("hideNpcs");
+
+		plugin.onConfigChanged(event);
+
+		verify(npcHider).setHideNpcs(true);
+		verify(panel).setHideNpcs(true);
+	}
+
+	@Example
+	void testHideNpcsChangeDoesNotRepeatTheMissingRequirementWarning() throws Exception
+	{
+		// onGameTick latches lastResultWasValid=false once it has warned. Clearing that latch
+		// on an unrelated key would send the same "Missing: ..." line on the next tick, once
+		// per click of the sidebar toggle.
+		setField(plugin, "lastResultWasValid", false);
+
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("hideNpcs");
+
+		plugin.onConfigChanged(event);
+
+		assertThat((boolean) getField(plugin, "lastResultWasValid")).isFalse();
+	}
+
+	@Example
+	void testUnrelatedConfigChangeLeavesTheHiderAlone()
+	{
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("nexRequireSpell");
+
+		plugin.onConfigChanged(event);
+
+		verifyNoInteractions(npcHider);
+	}
+
+	@Example
+	void testProfileChangeRereadsHideNpcsFromTheNewProfile()
+	{
+		// A profile switch swaps every value at once without a ConfigChanged per key.
+		when(config.hideNpcs()).thenReturn(true);
+
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		verify(npcHider).setHideNpcs(true);
+		verify(panel).setHideNpcs(true);
 	}
 
 	private void setField(Object target, String fieldName, Object value) throws Exception

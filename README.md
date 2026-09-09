@@ -18,3 +18,14 @@ A RuneLite plugin that prevents accidental boss entries by validating your spell
 4. Enable at least one spell requirement
 
 If requirements aren't met on entry, the default click becomes **Walk Here** and a chat message shows what's missing.
+
+## Side Panel
+
+The plugin adds a panel to the RuneLite sidebar for the settings you change mid-session.
+
+- **Hide NPCs** — hides every NPC, along with its health bar, overhead prayers, hitsplats and
+  name. Useful for seeing through a crowded room in Chambers of Xeric. The setting persists
+  across restarts and is stored per profile.
+
+Hiding works the same way the core Entity Hider plugin's does, so the two can run together.
+An NPC stays hidden if either plugin hides it.

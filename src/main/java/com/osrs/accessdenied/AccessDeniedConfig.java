@@ -10,6 +10,24 @@ public interface AccessDeniedConfig extends Config
 {
 	String CONFIG_GROUP = "accessdenied";
 
+	String HIDE_NPCS_KEY = "hideNpcs";
+
+	/**
+	 * Backs the side panel's Hide NPCs checkbox. Hidden from the settings screen because the
+	 * panel is its only intended control; it lives in config purely so the choice persists
+	 * across sessions and profiles.
+	 */
+	@ConfigItem(
+		keyName = HIDE_NPCS_KEY,
+		name = "Hide NPCs",
+		description = "Hide all NPCs, along with their health bars, overhead prayers and hitsplats.",
+		hidden = true
+	)
+	default boolean hideNpcs()
+	{
+		return false;
+	}
+
 	@ConfigSection(
 		name = "Nex",
 		description = "Configuration for Nex boss requirements",

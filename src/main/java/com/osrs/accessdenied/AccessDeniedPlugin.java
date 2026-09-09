@@ -106,8 +106,13 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		resetState();
 
-		clientToolbar.removeNavigation(navButton);
-		navButton = null;
+		// PluginManager calls shutDown() after a startUp() that threw, so the button may never
+		// have been built. ClientUI.removeNavigation dereferences its argument.
+		if (navButton != null)
+		{
+			clientToolbar.removeNavigation(navButton);
+			navButton = null;
+		}
 
 		npcHider.shutDown();
 	}
@@ -276,9 +281,13 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
+		// Returns rather than falling through: the reset below re-arms the "Missing: ..."
+		// chat warning, so without this every click of the sidebar toggle would repeat a
+		// warning the player has already been given.
 		if (AccessDeniedConfig.HIDE_NPCS_KEY.equals(event.getKey()))
 		{
 			applyHideNpcs();
+			return;
 		}
 
 		warnIfEnabledWithoutRequirements(event.getKey());

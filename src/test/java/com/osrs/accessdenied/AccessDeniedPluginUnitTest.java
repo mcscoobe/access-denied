@@ -920,6 +920,17 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
+	void testShutDownAfterAFailedStartUpRemovesNoNavigation()
+	{
+		// PluginManager calls shutDown() when startUp() throws, and ClientUI.removeNavigation
+		// dereferences the button it is handed.
+		plugin.shutDown();
+
+		verify(clientToolbar, never()).removeNavigation(any());
+		verify(npcHider).shutDown();
+	}
+
+	@Example
 	void testHideNpcsConfigChangeReachesTheHiderAndThePanel()
 	{
 		when(config.hideNpcs()).thenReturn(true);
@@ -932,6 +943,23 @@ class AccessDeniedPluginUnitTest
 
 		verify(npcHider).setHideNpcs(true);
 		verify(panel).setHideNpcs(true);
+	}
+
+	@Example
+	void testHideNpcsChangeDoesNotRepeatTheMissingRequirementWarning() throws Exception
+	{
+		// onGameTick latches lastResultWasValid=false once it has warned. Clearing that latch
+		// on an unrelated key would send the same "Missing: ..." line on the next tick, once
+		// per click of the sidebar toggle.
+		setField(plugin, "lastResultWasValid", false);
+
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("hideNpcs");
+
+		plugin.onConfigChanged(event);
+
+		assertThat((boolean) getField(plugin, "lastResultWasValid")).isFalse();
 	}
 
 	@Example

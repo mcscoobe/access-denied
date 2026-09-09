@@ -3,8 +3,8 @@ package com.osrs.accessdenied;
 import java.awt.Color;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import javax.swing.JCheckBox;
 import javax.swing.JLabel;
+import javax.swing.JToggleButton;
 import javax.swing.SwingUtilities;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.ColorScheme;
@@ -19,7 +19,10 @@ import net.runelite.client.ui.PluginPanel;
 @Singleton
 public class AccessDeniedPanel extends PluginPanel
 {
-	private final JCheckBox hideNpcsCheckbox = new JCheckBox("Hide NPCs");
+	private static final String NPCS_HIDDEN = "NPCs hidden";
+	private static final String NPCS_VISIBLE = "NPCs visible";
+
+	private final JToggleButton hideNpcsToggle = new JToggleButton();
 
 	@Inject
 	public AccessDeniedPanel(ConfigManager configManager)
@@ -29,25 +32,39 @@ public class AccessDeniedPanel extends PluginPanel
 		title.setFont(FontManager.getRunescapeBoldFont());
 		add(title);
 
-		hideNpcsCheckbox.setToolTipText("Hide all NPCs, along with their health bars, overhead prayers and hitsplats.");
-		hideNpcsCheckbox.setForeground(Color.WHITE);
-		hideNpcsCheckbox.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		// An ActionListener fires only on user interaction; setSelected() raises an ItemEvent
-		// instead. Syncing the box from a config change therefore cannot loop back into
-		// another config write.
-		hideNpcsCheckbox.addActionListener(e -> configManager.setConfiguration(
+		hideNpcsToggle.setFocusPainted(false);
+		hideNpcsToggle.setToolTipText("Hide all NPCs, along with their health bars, overhead prayers and hitsplats.");
+		// An ItemListener fires for a click and for setSelected alike, so the label always
+		// matches the button. An ActionListener fires only on a click, so syncing the button
+		// from a config change cannot loop back into another config write.
+		hideNpcsToggle.addItemListener(e -> updateToggleAppearance());
+		hideNpcsToggle.addActionListener(e -> configManager.setConfiguration(
 			AccessDeniedConfig.CONFIG_GROUP,
 			AccessDeniedConfig.HIDE_NPCS_KEY,
-			hideNpcsCheckbox.isSelected()));
-		add(hideNpcsCheckbox);
+			hideNpcsToggle.isSelected()));
+		updateToggleAppearance();
+		add(hideNpcsToggle);
 	}
 
 	/**
-	 * Reflects the stored value back into the checkbox. Called from config and profile
-	 * changes, which do not necessarily arrive on the AWT event thread.
+	 * Reflects the stored value back into the button. Called from config and profile changes,
+	 * which do not necessarily arrive on the AWT event thread.
 	 */
 	void setHideNpcs(boolean hideNpcs)
 	{
-		SwingUtilities.invokeLater(() -> hideNpcsCheckbox.setSelected(hideNpcs));
+		SwingUtilities.invokeLater(() -> hideNpcsToggle.setSelected(hideNpcs));
+	}
+
+	/**
+	 * The button states which way it is currently set rather than what clicking it will do.
+	 * A checkmark is not legible here: at sidebar size it is a few dark pixels against the
+	 * panel's dark grey, so the state has to be carried by the text and the colour.
+	 */
+	private void updateToggleAppearance()
+	{
+		boolean hidden = hideNpcsToggle.isSelected();
+		hideNpcsToggle.setText(hidden ? NPCS_HIDDEN : NPCS_VISIBLE);
+		hideNpcsToggle.setBackground(hidden ? ColorScheme.BRAND_ORANGE : ColorScheme.DARKER_GRAY_COLOR);
+		hideNpcsToggle.setForeground(hidden ? Color.BLACK : ColorScheme.LIGHT_GRAY_COLOR);
 	}
 }

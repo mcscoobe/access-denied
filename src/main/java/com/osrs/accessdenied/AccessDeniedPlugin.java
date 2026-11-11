@@ -131,8 +131,9 @@ public class AccessDeniedPlugin extends Plugin
 	/**
 	 * True while the reload object's options are being removed. Set only by
 	 * {@link #evaluateCoxScoutingRaid}; cleared by a failed evaluation, the player's release,
-	 * raid reset and {@link #resetState}. Not cleared when the raid starts:
-	 * {@link #coxRaidInProgress} suppresses menu edits instead.
+	 * raid reset and {@link #resetState}. Not cleared when the raid starts: the reload-removal
+	 * branch of {@link #onMenuEntryAdded} is skipped while the raid progress varbit is
+	 * non-zero instead, in every region, so re-arming it mid-raid has no effect.
 	 */
 	private boolean coxReloadLocked = false;
 
@@ -421,7 +422,8 @@ public class AccessDeniedPlugin extends Plugin
 		// Inside a running raid the entrance object ID is reused by ordinary doors, so
 		// every swap from here on would land on the wrong door. Nothing needs blocking
 		// once the raid has begun anyway. This only holds while currentLocation is COX:
-		// raid rooms outside its registered regions leave the location null.
+		// raid rooms outside its registered regions leave the location null, so the reload
+		// branch below checks the varbit itself.
 		if (coxRaidInProgress())
 		{
 			return;
@@ -451,7 +453,8 @@ public class AccessDeniedPlugin extends Plugin
 			}
 		}
 
-		if (objectId == BossLocation.COX_RELOAD_OBJECT && coxReloadLocked)
+		if (objectId == BossLocation.COX_RELOAD_OBJECT && coxReloadLocked
+			&& client.getVarbitValue(VarbitID.RAIDS_CLIENT_PROGRESS) == 0)
 		{
 			removeGameObjectEntriesForObject(BossLocation.COX_RELOAD_OBJECT);
 			addReleaseLockEntry();
@@ -841,8 +844,8 @@ public class AccessDeniedPlugin extends Plugin
 	 *
 	 * <p>Only true while {@link #currentLocation} is COX. In raid rooms outside its
 	 * registered regions the location is null, so this returns false there. The entrance
-	 * swap is unaffected (it needs a current location anyway), but the reload-removal branch
-	 * of {@link #onMenuEntryAdded} is not suppressed in those rooms.
+	 * swap is unaffected (it needs a current location anyway), and the reload-removal branch
+	 * of {@link #onMenuEntryAdded} reads the varbit directly, so it is suppressed there too.
 	 */
 	private boolean coxRaidInProgress()
 	{

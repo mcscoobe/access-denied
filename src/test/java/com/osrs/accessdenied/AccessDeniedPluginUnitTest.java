@@ -715,6 +715,34 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
+	void testReloadLockMakesNoMenuChangesOnceRaidStartedOutsideCoxRegions() throws Exception
+	{
+		// Issue #33: raid rooms outside CoX's registered regions leave the location null, but
+		// the lock must still stay out of the menu once the raid has started.
+		stubScoutedRaid("fsccppcscf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
+		assertThat(evaluateScoutedRaid()).as("precondition: the scouted raid locks").isTrue();
+		when(client.getVarbitValue(VarbitID.RAIDS_CLIENT_PROGRESS)).thenReturn(1);
+
+		MenuEntry reload = mock(MenuEntry.class);
+		when(reload.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(reload.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{reload});
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
+
+		for (BossLocation location : new BossLocation[]{null, BossLocation.COX})
+		{
+			setField(plugin, "currentLocation", location);
+			clearInvocations(menu);
+			plugin.onMenuEntryAdded(event);
+			verify(menu, never()).setMenuEntries(any());
+			verify(menu, never()).createMenuEntry(anyInt());
+		}
+	}
+
+	@Example
 	void testOnMenuEntryAddedStillSwapsInCoxLobbyBeforeRaidStarts() throws Exception
 	{
 		// Same object ID, raid not started: the entrance swap must still fire.

@@ -1066,6 +1066,149 @@ class AccessDeniedPluginUnitTest
 		verify(panel).setHideNpcs(true);
 	}
 
+	private void givenScoutingWithFilterAndRaidsPlugin(String raidsPluginEnabled)
+	{
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(worldView.getMapRegions()).thenReturn(new int[0]);
+		when(config.coxScoutingEnabled()).thenReturn(true);
+		when(config.coxScoutRequiredRooms()).thenReturn("");
+		when(config.coxScoutDisallowedRooms()).thenReturn("");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+		when(configManager.getConfiguration("runelite", "raidsplugin")).thenReturn(raidsPluginEnabled);
+	}
+
+	private ConfigChanged configChanged(String group, String key)
+	{
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn(group);
+		when(event.getKey()).thenReturn(key);
+		return event;
+	}
+
+	private void verifyRaidsPluginWarnings(int times)
+	{
+		verify(client, times(times)).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""),
+			contains("Chambers Of Xeric"), isNull());
+	}
+
+	@Example
+	void testStartUpWarnsOnceWhenRaidsPluginIsDisabled() throws Exception
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+
+		plugin.startUp();
+		GameStateChanged login = mock(GameStateChanged.class);
+		when(login.getGameState()).thenReturn(GameState.LOGGED_IN);
+		plugin.onGameStateChanged(login);
+
+		verifyRaidsPluginWarnings(1);
+	}
+
+	@Example
+	void testLoginWarnsWhenRaidsPluginIsDisabled()
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+
+		GameStateChanged login = mock(GameStateChanged.class);
+		when(login.getGameState()).thenReturn(GameState.LOGGED_IN);
+		plugin.onGameStateChanged(login);
+
+		verifyRaidsPluginWarnings(1);
+	}
+
+	@Example
+	void testDisablingRaidsPluginWarnsOnceAndReEnablingSendsNothing()
+	{
+		givenScoutingWithFilterAndRaidsPlugin(null);
+
+		when(configManager.getConfiguration("runelite", "raidsplugin")).thenReturn("false");
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+		verifyRaidsPluginWarnings(1);
+
+		when(configManager.getConfiguration("runelite", "raidsplugin")).thenReturn("true");
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+		verifyRaidsPluginWarnings(1);
+
+		// Disabling it again is a new transition into the can't-arm state.
+		when(configManager.getConfiguration("runelite", "raidsplugin")).thenReturn("false");
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+		verifyRaidsPluginWarnings(2);
+	}
+
+	@Example
+	void testNoRaidsPluginWarningWhenScoutingIsOff() throws Exception
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+		when(config.coxScoutingEnabled()).thenReturn(false);
+
+		plugin.startUp();
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+
+		verifyRaidsPluginWarnings(0);
+	}
+
+	@Example
+	void testNoRaidsPluginWarningWhenNoFiltersAreSet() throws Exception
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+		when(config.coxScoutAllowedLayouts()).thenReturn(" , ");
+
+		plugin.startUp();
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+
+		verifyRaidsPluginWarnings(0);
+	}
+
+	@Example
+	void testNoRaidsPluginWarningWhenRaidsPluginIsUnsetOrEnabled() throws Exception
+	{
+		givenScoutingWithFilterAndRaidsPlugin(null);
+		plugin.startUp();
+
+		when(configManager.getConfiguration("runelite", "raidsplugin")).thenReturn("true");
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+
+		verifyRaidsPluginWarnings(0);
+	}
+
+	@Example
+	void testRaidsPluginWarningFollowsScoutingConfigAndProfileChanges()
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+
+		// Setting the first filter moves into the can't-arm state.
+		plugin.onConfigChanged(configChanged("accessdenied", "coxScoutAllowedLayouts"));
+		verifyRaidsPluginWarnings(1);
+
+		// A profile without scouting leaves it, and switching back re-enters it.
+		when(config.coxScoutingEnabled()).thenReturn(false);
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+		when(config.coxScoutingEnabled()).thenReturn(true);
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+		verifyRaidsPluginWarnings(2);
+	}
+
+	@Example
+	void testRaidsPluginWarningIsNotRepeatedOnTicksOrMenuRebuilds()
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+		GameStateChanged login = mock(GameStateChanged.class);
+		when(login.getGameState()).thenReturn(GameState.LOGGED_IN);
+		plugin.onGameStateChanged(login);
+
+		MenuEntryAdded menuEvent = mock(MenuEntryAdded.class);
+		when(menuEvent.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(menuEvent.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
+		for (int i = 0; i < 3; i++)
+		{
+			plugin.onGameTick(mock(GameTick.class));
+			plugin.onMenuEntryAdded(menuEvent);
+			plugin.onGameStateChanged(login);
+		}
+
+		verifyRaidsPluginWarnings(1);
+	}
+
 	private void setField(Object target, String fieldName, Object value) throws Exception
 	{
 		Field field = target.getClass().getDeclaredField(fieldName);

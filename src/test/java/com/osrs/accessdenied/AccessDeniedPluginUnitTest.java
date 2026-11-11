@@ -310,6 +310,87 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
+	void testFirstArrivalWithoutRequirementsWarnsOnceAndRecordsIt()
+	{
+		// Fresh profile: the master toggle defaults on, every requirement off.
+		when(config.nexEnabled()).thenReturn(true);
+
+		arriveAt(11601);
+
+		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""),
+			contains("Nex validation is enabled but no requirements"), isNull());
+		verify(configManager).setConfiguration("accessdenied", "nexNoRequirementsWarned", true);
+	}
+
+	@Example
+	void testArrivalAlreadyWarnedForDoesNotRepeat()
+	{
+		when(config.nexEnabled()).thenReturn(true);
+		when(configManager.getConfiguration("accessdenied", "nexNoRequirementsWarned")).thenReturn("true");
+
+		arriveAt(11601);
+
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+	}
+
+	@Example
+	void testStartUpAtLocationAlreadyWarnedForDoesNotRepeat()
+	{
+		when(config.nexEnabled()).thenReturn(true);
+		when(configManager.getConfiguration("accessdenied", "nexNoRequirementsWarned")).thenReturn("true");
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(worldView.getMapRegions()).thenReturn(new int[]{11601});
+
+		plugin.startUp();
+
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+	}
+
+	@Example
+	void testStartUpAtLocationWithoutRequirementsCountsAsArrival()
+	{
+		when(config.nexEnabled()).thenReturn(true);
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(worldView.getMapRegions()).thenReturn(new int[]{11601});
+
+		plugin.startUp();
+
+		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""),
+			contains("no requirements"), isNull());
+	}
+
+	@Example
+	void testArrivalWithRequirementsDoesNotWarnOrConsumeTheOnce()
+	{
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexBanChugJug()).thenReturn(true);
+
+		arriveAt(11601);
+
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("nexNoRequirementsWarned"), any());
+	}
+
+	@Example
+	void testArrivalWithMasterToggleOffDoesNotWarnOrConsumeTheOnce()
+	{
+		when(config.nexEnabled()).thenReturn(false);
+
+		arriveAt(11601);
+
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("nexNoRequirementsWarned"), any());
+	}
+
+	private void arriveAt(int regionId)
+	{
+		GameStateChanged event = mock(GameStateChanged.class);
+		when(event.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(worldView.getMapRegions()).thenReturn(new int[]{regionId});
+		plugin.onGameStateChanged(event);
+	}
+
+	@Example
 	void testCoxValidationPassesForArceuusComboWhenSatisfied() throws Exception
 	{
 		// THRALLS_AND_DEATH_CHARGE requires both Arceuus spells plus the Arceuus spellbook.
@@ -631,6 +712,34 @@ class AccessDeniedPluginUnitTest
 		plugin.onMenuEntryAdded(event);
 
 		verify(menu, never()).createMenuEntry(anyInt());
+	}
+
+	@Example
+	void testReloadLockMakesNoMenuChangesOnceRaidStartedOutsideCoxRegions() throws Exception
+	{
+		// Issue #33: raid rooms outside CoX's registered regions leave the location null, but
+		// the lock must still stay out of the menu once the raid has started.
+		stubScoutedRaid("fsccppcscf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
+		assertThat(evaluateScoutedRaid()).as("precondition: the scouted raid locks").isTrue();
+		when(client.getVarbitValue(VarbitID.RAIDS_CLIENT_PROGRESS)).thenReturn(1);
+
+		MenuEntry reload = mock(MenuEntry.class);
+		when(reload.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(reload.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{reload});
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
+
+		for (BossLocation location : new BossLocation[]{null, BossLocation.COX})
+		{
+			setField(plugin, "currentLocation", location);
+			clearInvocations(menu);
+			plugin.onMenuEntryAdded(event);
+			verify(menu, never()).setMenuEntries(any());
+			verify(menu, never()).createMenuEntry(anyInt());
+		}
 	}
 
 	@Example
@@ -1055,6 +1164,65 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
+	void testConfigChangeClearsTheCacheAndReevaluatesTheScoutingLock() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("scpf");
+		setField(plugin, "lastMissing", List.of("Rune pouch"));
+		setField(plugin, "lastResultWasValid", false);
+
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("coxScoutAllowedLayouts");
+
+		plugin.onConfigChanged(event);
+
+		assertThat(getField(plugin, "lastMissing")).isNull();
+		assertThat((boolean) getField(plugin, "lastResultWasValid")).isTrue();
+		assertThat((boolean) getField(plugin, "coxReloadLocked")).isTrue();
+	}
+
+	@Example
+	void testConfigChangeLeavesStateAloneUntilTheClientThreadRunsIt() throws Exception
+	{
+		// ConfigChanged arrives on the AWT event thread; the state it resets is owned by the
+		// client thread, so nothing may change until the handed-over work actually runs.
+		doNothing().when(clientThread).invoke(any(Runnable.class));
+		stubScoutedRaid("SCPFCCSPSF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("scpf");
+		List<String> missing = List.of("Rune pouch");
+		setField(plugin, "lastMissing", missing);
+		setField(plugin, "lastResultWasValid", false);
+
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("coxScoutAllowedLayouts");
+
+		plugin.onConfigChanged(event);
+
+		verify(clientThread).invoke(any(Runnable.class));
+		assertThat(getField(plugin, "lastMissing")).isSameAs(missing);
+		assertThat((boolean) getField(plugin, "lastResultWasValid")).isFalse();
+		assertThat((boolean) getField(plugin, "coxReloadLocked")).isFalse();
+	}
+
+	@Example
+	void testOtherGroupsAndHideNpcsDoNotReachTheClientThread()
+	{
+		ConfigChanged other = mock(ConfigChanged.class);
+		when(other.getGroup()).thenReturn("othergroup");
+		when(other.getKey()).thenReturn("coxScoutAllowedLayouts");
+		ConfigChanged hideNpcs = mock(ConfigChanged.class);
+		when(hideNpcs.getGroup()).thenReturn("accessdenied");
+		when(hideNpcs.getKey()).thenReturn("hideNpcs");
+
+		plugin.onConfigChanged(other);
+		plugin.onConfigChanged(hideNpcs);
+
+		verify(clientThread, never()).invoke(any(Runnable.class));
+	}
+
+	@Example
 	void testProfileChangeRereadsHideNpcsFromTheNewProfile()
 	{
 		// A profile switch swaps every value at once without a ConfigChanged per key.
@@ -1064,6 +1232,233 @@ class AccessDeniedPluginUnitTest
 
 		verify(npcHider).setHideNpcs(true);
 		verify(panel).setHideNpcs(true);
+	}
+
+	@Example
+	void testProfileChangeUnlocksARaidTheNewProfileRejects() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+		assertThat(evaluateScoutedRaid()).as("profile A locks the raid").isTrue();
+
+		when(config.coxScoutAllowedLayouts()).thenReturn("scpf");
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		assertThat(reloadOptionsRemoved()).as("profile B rejects the raid, so the lock is off").isFalse();
+	}
+
+	@Example
+	void testProfileChangeLocksARaidTheNewProfileAccepts() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("scpf");
+		assertThat(evaluateScoutedRaid()).as("profile A rejects the raid").isFalse();
+
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		assertThat(reloadOptionsRemoved()).as("profile B accepts the raid, so the lock is on").isTrue();
+	}
+
+	@Example
+	void testProfileChangeWithNoScoutedRaidLeavesTheLockOff() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+		setField(plugin, "currentCoxRaid", null);
+		setField(plugin, "coxReloadLocked", true);
+
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		assertThat(reloadOptionsRemoved()).as("no scouted raid means no lock").isFalse();
+	}
+
+	@Example
+	void testProfileChangeWithScoutingDisabledLeavesTheLockOff() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+		assertThat(evaluateScoutedRaid()).as("profile A locks the raid").isTrue();
+
+		when(config.coxScoutingEnabled()).thenReturn(false);
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		assertThat(reloadOptionsRemoved()).as("scouting off in the new profile means no lock").isFalse();
+	}
+
+	@Example
+	void testProfileChangeKeepsAReleasedLayoutReleased() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		setField(plugin, "coxScoutingReleasedLayout", "FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		assertThat(reloadOptionsRemoved()).as("a released layout stays released across a profile switch").isFalse();
+		assertThat(getField(plugin, "coxScoutingReleasedLayout")).isEqualTo("FSCCPPCSCF");
+	}
+
+	@Example
+	void testProfileChangeRearmsTheMissingRequirementWarning() throws Exception
+	{
+		setField(plugin, "currentLocation", BossLocation.NEX);
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexRequireSpell()).thenReturn(true);
+		// validator mock returns false by default, so validation is invalid
+
+		plugin.onGameTick(mock(GameTick.class));
+		assertThat((boolean) getField(plugin, "lastResultWasValid")).as("the tick latches the failure").isFalse();
+		clearInvocations(client);
+
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+		assertThat((boolean) getField(plugin, "lastResultWasValid")).isTrue();
+
+		plugin.onGameTick(mock(GameTick.class));
+		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""), anyString(), isNull());
+	}
+
+	private void givenScoutingWithFilterAndRaidsPlugin(String raidsPluginEnabled)
+	{
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(worldView.getMapRegions()).thenReturn(new int[0]);
+		when(config.coxScoutingEnabled()).thenReturn(true);
+		when(config.coxScoutRequiredRooms()).thenReturn("");
+		when(config.coxScoutDisallowedRooms()).thenReturn("");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+		when(configManager.getConfiguration("runelite", "raidsplugin")).thenReturn(raidsPluginEnabled);
+	}
+
+	private ConfigChanged configChanged(String group, String key)
+	{
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn(group);
+		when(event.getKey()).thenReturn(key);
+		return event;
+	}
+
+	private void verifyRaidsPluginWarnings(int times)
+	{
+		verify(client, times(times)).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""),
+			contains("Chambers Of Xeric"), isNull());
+	}
+
+	@Example
+	void testStartUpWarnsOnceWhenRaidsPluginIsDisabled() throws Exception
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+
+		plugin.startUp();
+		GameStateChanged login = mock(GameStateChanged.class);
+		when(login.getGameState()).thenReturn(GameState.LOGGED_IN);
+		plugin.onGameStateChanged(login);
+
+		verifyRaidsPluginWarnings(1);
+	}
+
+	@Example
+	void testLoginWarnsWhenRaidsPluginIsDisabled()
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+
+		GameStateChanged login = mock(GameStateChanged.class);
+		when(login.getGameState()).thenReturn(GameState.LOGGED_IN);
+		plugin.onGameStateChanged(login);
+
+		verifyRaidsPluginWarnings(1);
+	}
+
+	@Example
+	void testDisablingRaidsPluginWarnsOnceAndReEnablingSendsNothing()
+	{
+		givenScoutingWithFilterAndRaidsPlugin(null);
+
+		when(configManager.getConfiguration("runelite", "raidsplugin")).thenReturn("false");
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+		verifyRaidsPluginWarnings(1);
+
+		when(configManager.getConfiguration("runelite", "raidsplugin")).thenReturn("true");
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+		verifyRaidsPluginWarnings(1);
+
+		// Disabling it again is a new transition into the can't-arm state.
+		when(configManager.getConfiguration("runelite", "raidsplugin")).thenReturn("false");
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+		verifyRaidsPluginWarnings(2);
+	}
+
+	@Example
+	void testNoRaidsPluginWarningWhenScoutingIsOff() throws Exception
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+		when(config.coxScoutingEnabled()).thenReturn(false);
+
+		plugin.startUp();
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+
+		verifyRaidsPluginWarnings(0);
+	}
+
+	@Example
+	void testNoRaidsPluginWarningWhenNoFiltersAreSet() throws Exception
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+		when(config.coxScoutAllowedLayouts()).thenReturn(" , ");
+
+		plugin.startUp();
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+
+		verifyRaidsPluginWarnings(0);
+	}
+
+	@Example
+	void testNoRaidsPluginWarningWhenRaidsPluginIsUnsetOrEnabled() throws Exception
+	{
+		givenScoutingWithFilterAndRaidsPlugin(null);
+		plugin.startUp();
+
+		when(configManager.getConfiguration("runelite", "raidsplugin")).thenReturn("true");
+		plugin.onConfigChanged(configChanged("runelite", "raidsplugin"));
+
+		verifyRaidsPluginWarnings(0);
+	}
+
+	@Example
+	void testRaidsPluginWarningFollowsScoutingConfigAndProfileChanges()
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+
+		// Setting the first filter moves into the can't-arm state.
+		plugin.onConfigChanged(configChanged("accessdenied", "coxScoutAllowedLayouts"));
+		verifyRaidsPluginWarnings(1);
+
+		// A profile without scouting leaves it, and switching back re-enters it.
+		when(config.coxScoutingEnabled()).thenReturn(false);
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+		when(config.coxScoutingEnabled()).thenReturn(true);
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+		verifyRaidsPluginWarnings(2);
+	}
+
+	@Example
+	void testRaidsPluginWarningIsNotRepeatedOnTicksOrMenuRebuilds()
+	{
+		givenScoutingWithFilterAndRaidsPlugin("false");
+		GameStateChanged login = mock(GameStateChanged.class);
+		when(login.getGameState()).thenReturn(GameState.LOGGED_IN);
+		plugin.onGameStateChanged(login);
+
+		MenuEntryAdded menuEvent = mock(MenuEntryAdded.class);
+		when(menuEvent.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(menuEvent.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
+		for (int i = 0; i < 3; i++)
+		{
+			plugin.onGameTick(mock(GameTick.class));
+			plugin.onMenuEntryAdded(menuEvent);
+			plugin.onGameStateChanged(login);
+		}
+
+		verifyRaidsPluginWarnings(1);
 	}
 
 	private void setField(Object target, String fieldName, Object value) throws Exception

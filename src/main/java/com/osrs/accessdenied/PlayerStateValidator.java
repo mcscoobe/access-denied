@@ -173,8 +173,9 @@ public class PlayerStateValidator
 	/**
 	 * Scan inventory and worn equipment for items that grant unlimited runes
 	 * (Kodai wand, charged tomes, elemental and combination staves).
-	 * This is a capability check matching the previous Kodai behaviour: carrying the
-	 * item is enough, it does not need to be wielded. As a result it can over-suppress
+	 * A source counts whether it is worn or only carried in the inventory, because
+	 * validation checks what the player can cast after one gear switch, not what is
+	 * wielded right now. As a result it can over-suppress
 	 * when a spell needs two elements covered only by two staves that cannot be wielded
 	 * at once (e.g. Humidify with separate fire and water staves); this only affects
 	 * trivial single-rune requirements and is accepted.

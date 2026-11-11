@@ -15,8 +15,7 @@ A RuneLite plugin that prevents accidental boss entries by validating your spell
 
 1. Enable the plugin in RuneLite
 2. Open plugin configuration and select a location
-3. Enable **Enable Validation**
-4. Enable at least one spell requirement
+3. Enable at least one requirement (**Enable Validation** is on by default, but validates nothing until a requirement is set)
 
 If requirements aren't met on entry, the default click becomes **Walk Here** and a chat message shows what's missing.
 

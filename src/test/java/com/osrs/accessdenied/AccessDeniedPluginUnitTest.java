@@ -1066,6 +1066,90 @@ class AccessDeniedPluginUnitTest
 		verify(panel).setHideNpcs(true);
 	}
 
+	@Example
+	void testProfileChangeUnlocksARaidTheNewProfileRejects() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+		assertThat(evaluateScoutedRaid()).as("profile A locks the raid").isTrue();
+
+		when(config.coxScoutAllowedLayouts()).thenReturn("scpf");
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		assertThat(reloadOptionsRemoved()).as("profile B rejects the raid, so the lock is off").isFalse();
+	}
+
+	@Example
+	void testProfileChangeLocksARaidTheNewProfileAccepts() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("scpf");
+		assertThat(evaluateScoutedRaid()).as("profile A rejects the raid").isFalse();
+
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		assertThat(reloadOptionsRemoved()).as("profile B accepts the raid, so the lock is on").isTrue();
+	}
+
+	@Example
+	void testProfileChangeWithNoScoutedRaidLeavesTheLockOff() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+		setField(plugin, "currentCoxRaid", null);
+		setField(plugin, "coxReloadLocked", true);
+
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		assertThat(reloadOptionsRemoved()).as("no scouted raid means no lock").isFalse();
+	}
+
+	@Example
+	void testProfileChangeWithScoutingDisabledLeavesTheLockOff() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+		assertThat(evaluateScoutedRaid()).as("profile A locks the raid").isTrue();
+
+		when(config.coxScoutingEnabled()).thenReturn(false);
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		assertThat(reloadOptionsRemoved()).as("scouting off in the new profile means no lock").isFalse();
+	}
+
+	@Example
+	void testProfileChangeKeepsAReleasedLayoutReleased() throws Exception
+	{
+		stubScoutedRaid("FSCCPPCSCF");
+		setField(plugin, "coxScoutingReleasedLayout", "FSCCPPCSCF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fscc");
+
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+
+		assertThat(reloadOptionsRemoved()).as("a released layout stays released across a profile switch").isFalse();
+		assertThat(getField(plugin, "coxScoutingReleasedLayout")).isEqualTo("FSCCPPCSCF");
+	}
+
+	@Example
+	void testProfileChangeRearmsTheMissingRequirementWarning() throws Exception
+	{
+		setField(plugin, "currentLocation", BossLocation.NEX);
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexRequireSpell()).thenReturn(true);
+		// validator mock returns false by default, so validation is invalid
+
+		plugin.onGameTick(mock(GameTick.class));
+		assertThat((boolean) getField(plugin, "lastResultWasValid")).as("the tick latches the failure").isFalse();
+		clearInvocations(client);
+
+		plugin.onProfileChanged(mock(ProfileChanged.class));
+		assertThat((boolean) getField(plugin, "lastResultWasValid")).isTrue();
+
+		plugin.onGameTick(mock(GameTick.class));
+		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""), anyString(), isNull());
+	}
+
 	private void setField(Object target, String fieldName, Object value) throws Exception
 	{
 		Field field = target.getClass().getDeclaredField(fieldName);

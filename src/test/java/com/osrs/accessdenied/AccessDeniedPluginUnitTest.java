@@ -516,13 +516,9 @@ class AccessDeniedPluginUnitTest
 	{
 		// Issue #15: with the reload block active the object has no game options left, so the
 		// only way out must be the plugin's own menu entry.
-		setField(plugin, "coxReloadLocked", true);
-
-		Layout layout = mock(Layout.class);
-		when(layout.toCodeString()).thenReturn("fsccppcscf");
-		Raid raid = mock(Raid.class);
-		when(raid.getLayout()).thenReturn(layout);
-		setField(plugin, "currentCoxRaid", raid);
+		stubScoutedRaid("fsccppcscf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
+		assertThat(evaluateScoutedRaid()).as("precondition: the scouted raid locks").isTrue();
 
 		MenuEntry reloadEntry = mock(MenuEntry.class);
 		when(reloadEntry.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
@@ -546,22 +542,18 @@ class AccessDeniedPluginUnitTest
 
 		onClick.getValue().accept(releaseEntry);
 
-		assertThat((boolean) getField(plugin, "coxReloadLocked")).as("clicking release must lift the block").isFalse();
+		assertThat(reloadOptionsRemoved()).as("clicking release must lift the block").isFalse();
 
 		// A re-scout of the same raid must not silently re-lock it.
-		when(config.coxScoutingEnabled()).thenReturn(true);
-		when(config.coxScoutRequiredRooms()).thenReturn("");
-		when(config.coxScoutDisallowedRooms()).thenReturn("");
-		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
-		invokePrivate(plugin, "evaluateCoxScoutingRaid");
-
-		assertThat((boolean) getField(plugin, "coxReloadLocked")).as("released raid must stay unlocked").isFalse();
+		assertThat(evaluateScoutedRaid()).as("released raid must stay unlocked").isFalse();
 	}
 
 	@Example
 	void testReleaseLockEntryNotAddedTwiceForSameMenu() throws Exception
 	{
-		setField(plugin, "coxReloadLocked", true);
+		stubScoutedRaid("fsccppcscf");
+		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
+		assertThat(evaluateScoutedRaid()).as("precondition: the scouted raid locks").isTrue();
 
 		MenuEntry existing = mock(MenuEntry.class);
 		when(existing.getOption()).thenReturn("Release raid lock");
@@ -648,7 +640,31 @@ class AccessDeniedPluginUnitTest
 	private boolean evaluateScoutedRaid() throws Exception
 	{
 		invokePrivate(plugin, "evaluateCoxScoutingRaid");
-		return (boolean) getField(plugin, "coxReloadLocked");
+		return reloadOptionsRemoved();
+	}
+
+	/**
+	 * Observes the lock the way the player does: offers a menu holding a reload-object option
+	 * and reports whether the plugin stripped it. Leaves no recorded menu interactions behind.
+	 */
+	private boolean reloadOptionsRemoved()
+	{
+		MenuEntry reload = mock(MenuEntry.class);
+		when(reload.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(reload.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{reload});
+		when(menu.createMenuEntry(0)).thenReturn(mock(MenuEntry.class, RETURNS_SELF));
+		clearInvocations(menu);
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocation.COX_RELOAD_OBJECT);
+		plugin.onMenuEntryAdded(event);
+
+		boolean removed = mockingDetails(menu).getInvocations().stream()
+			.anyMatch(i -> i.getMethod().getName().equals("setMenuEntries"));
+		clearInvocations(menu);
+		return removed;
 	}
 
 	@Example

@@ -48,10 +48,10 @@ import java.util.Set;
  * the player leaves the location, or a CoX raid is in progress.
  *
  * <p><b>CoX reload lock.</b> Once a scouted raid passes the required-room, disallowed-room
- * and allowed-layout filters, the reload object's game options are removed outright and a
- * right-click "Release raid lock" entry is offered instead. Fed by {@code RaidScouted} and
- * {@code RaidReset} (state), {@code ConfigChanged} on {@code coxScout*} keys (re-evaluate)
- * and {@code MenuEntryAdded} (apply). It stops when the player releases it, the raid
+ * and allowed-layout filters, the reload object's first and second game-object options are
+ * removed and a right-click "Release raid lock" entry is offered instead. Fed by
+ * {@code RaidScouted} and {@code RaidReset} (state), {@code ConfigChanged} on
+ * {@code coxScout*} keys (re-evaluate) and {@code MenuEntryAdded} (apply). It stops when the player releases it, the raid
  * resets, or the filters stop matching. Those raid events come from RuneLite's built-in
  * Chambers of Xeric plugin: with that plugin disabled the lock never arms, and it never
  * arms in challenge mode because that plugin doesn't fire RaidScouted there.
@@ -61,9 +61,11 @@ import java.util.Set;
  * persisted.
  *
  * <p><b>State resets:</b> everything on start-up and shutdown; the validation cache on
- * location change and on any config change except the hide-NPCs key, which returns early;
- * legacy config is re-migrated and hide-NPCs re-applied on profile change; the scouting
- * state on raid reset.
+ * location change, on every game tick where validation isn't required or a CoX raid is in
+ * progress, and on any config change in this plugin's group except the hide-NPCs key
+ * (config changes for other groups and the hide-NPCs key both return early); the scouting
+ * state on raid reset. A profile change re-migrates legacy config and re-applies hide-NPCs
+ * but does not clear any plugin state.
  *
  * <p><b>Threading:</b> config changes arrive off the client thread (AWT), while tick, menu
  * and raid handlers run on it. Anything that touches the client from a config path must
@@ -494,10 +496,10 @@ public class AccessDeniedPlugin extends Plugin
 			}
 		}
 
-		boolean wasGood = coxReloadLocked;
+		boolean wasLocked = coxReloadLocked;
 		coxReloadLocked = true;
 
-		if (!wasGood)
+		if (!wasLocked)
 		{
 			sendChatMessage("Good raid found — reload protection active.");
 		}
@@ -784,6 +786,11 @@ public class AccessDeniedPlugin extends Plugin
 	 * tracked from the "The raid has begun!" message: map region churn while moving
 	 * between rooms (and any relog inside the raid) used to clear a tracked flag, which
 	 * brought the entrance swap back on in-raid doors sharing the entrance object ID.
+	 *
+	 * <p>Only true while {@link #currentLocation} is COX. In raid rooms outside its
+	 * registered regions the location is null, so this returns false there. The entrance
+	 * swap is unaffected (it needs a current location anyway), but the reload-removal branch
+	 * of {@link #onMenuEntryAdded} is not suppressed in those rooms.
 	 */
 	private boolean coxRaidInProgress()
 	{

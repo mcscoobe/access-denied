@@ -298,7 +298,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "coxScoutingEnabled",
 		name = "Enable Scouting Protection",
-		description = "When a scouted raid passes all configured room and layout checks, replaces the left-click on the reload object with Walk Here to prevent accidental reloads.",
+		description = "When a scouted raid passes all configured room and layout checks, removes the reload object's options to prevent accidental reloads.",
 		section = coxScoutingSection,
 		position = 0
 	)

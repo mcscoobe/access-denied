@@ -490,7 +490,7 @@ class AccessDeniedPluginUnitTest
 	@Example
 	void testFracturedArchiveDoorReordersWhenThrallsMissing() throws Exception
 	{
-		setField(plugin, "currentLocation", BossLocation.findByRegions(new int[]{16470}));
+		setField(plugin, "currentLocation", BossLocation.TFA);
 		setField(plugin, "lastMissing", null);
 
 		when(config.tfaEnabled()).thenReturn(true);
@@ -505,17 +505,20 @@ class AccessDeniedPluginUnitTest
 
 		MenuEntryAdded event = mock(MenuEntryAdded.class);
 		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
-		when(event.getIdentifier()).thenReturn(63110);
+		when(event.getIdentifier()).thenReturn(BossLocation.TFA.getObjectId());
 
 		plugin.onMenuEntryAdded(event);
 
-		verify(menu).setMenuEntries(any());
+		ArgumentCaptor<MenuEntry[]> captor = ArgumentCaptor.forClass(MenuEntry[].class);
+		verify(menu).setMenuEntries(captor.capture());
+		MenuEntry[] reordered = captor.getValue();
+		assertThat(reordered[reordered.length - 1]).as("Walk Here should be the top option").isSameAs(walkEntry);
 	}
 
 	@Example
 	void testFracturedArchiveDoorDoesNotReorderWhenThrallsMet() throws Exception
 	{
-		setField(plugin, "currentLocation", BossLocation.findByRegions(new int[]{16470}));
+		setField(plugin, "currentLocation", BossLocation.TFA);
 		setField(plugin, "lastMissing", null);
 
 		when(config.tfaEnabled()).thenReturn(true);
@@ -526,7 +529,7 @@ class AccessDeniedPluginUnitTest
 
 		MenuEntryAdded event = mock(MenuEntryAdded.class);
 		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
-		when(event.getIdentifier()).thenReturn(63110);
+		when(event.getIdentifier()).thenReturn(BossLocation.TFA.getObjectId());
 
 		plugin.onMenuEntryAdded(event);
 

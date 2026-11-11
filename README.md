@@ -19,6 +19,19 @@ A RuneLite plugin that prevents accidental boss entries by validating your spell
 
 If requirements aren't met on entry, the default click becomes **Walk Here** and a chat message shows what's missing.
 
+## CoX Reload Lock
+
+While scouting Chambers of Xeric, the plugin can stop you from reloading a raid you want to keep.
+Turn on **Enable Scouting Protection** and set at least one of the required rooms, disallowed
+rooms or allowed layouts filters.
+
+- When a scouted raid passes every filter you set, the lock arms and the reload object's
+  options are removed.
+- Right-click the reload object and choose **Release raid lock** to unlock it. The lock stays
+  released for that layout until the raid resets.
+- The lock relies on RuneLite's built-in **Chambers of Xeric** plugin to scout the raid, so that
+  plugin must be enabled. The lock doesn't arm in challenge mode.
+
 ## Side Panel
 
 The plugin adds a panel to the RuneLite sidebar for the settings you change mid-session.

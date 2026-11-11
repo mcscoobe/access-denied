@@ -488,6 +488,52 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
+	void testFracturedArchiveDoorReordersWhenThrallsMissing() throws Exception
+	{
+		setField(plugin, "currentLocation", BossLocation.findByRegions(new int[]{16470}));
+		setField(plugin, "lastMissing", null);
+
+		when(config.tfaEnabled()).thenReturn(true);
+		when(config.tfaRequireSpell()).thenReturn(true);
+		// validator mock returns false by default, so validation is invalid
+
+		MenuEntry walkEntry = mock(MenuEntry.class);
+		when(walkEntry.getType()).thenReturn(MenuAction.WALK);
+		MenuEntry objectEntry = mock(MenuEntry.class);
+		when(objectEntry.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{walkEntry, objectEntry});
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(63110);
+
+		plugin.onMenuEntryAdded(event);
+
+		verify(menu).setMenuEntries(any());
+	}
+
+	@Example
+	void testFracturedArchiveDoorDoesNotReorderWhenThrallsMet() throws Exception
+	{
+		setField(plugin, "currentLocation", BossLocation.findByRegions(new int[]{16470}));
+		setField(plugin, "lastMissing", null);
+
+		when(config.tfaEnabled()).thenReturn(true);
+		when(config.tfaRequireSpell()).thenReturn(true);
+		when(validator.hasResurrectGreaterGhostRunes()).thenReturn(true);
+		when(validator.hasBookOfTheDead()).thenReturn(true);
+		when(validator.isOnArceuusSpellbook()).thenReturn(true);
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(63110);
+
+		plugin.onMenuEntryAdded(event);
+
+		verify(menu, never()).setMenuEntries(any());
+	}
+
+	@Example
 	void testOnMenuEntryAddedSkipsOnDemandDuringActiveCoxRaid() throws Exception
 	{
 		// Doors inside the raid reuse the entrance object ID, so once the raid has started

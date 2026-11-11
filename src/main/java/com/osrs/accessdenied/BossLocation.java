@@ -22,6 +22,13 @@ public enum BossLocation
 		AccessDeniedConfig::nexBanSaturatedHeart,
 		"Chug Jug"),
 
+	TFA("The Fractured Archive", 63110, new int[]{16470},
+		AccessDeniedConfig::tfaEnabled,
+		c -> c.tfaRequireSpell() || c.tfaRequireDeathCharge(),
+		AccessDeniedConfig::tfaBanChugJug,
+		AccessDeniedConfig::tfaBanSaturatedHeart,
+		"Chug Jug"),
+
 	TOB("Theatre of Blood", 32653, new int[]{14642},
 		AccessDeniedConfig::tobEnabled,
 		c -> c.tobRequireSpell() || c.tobRequireDeathCharge(),

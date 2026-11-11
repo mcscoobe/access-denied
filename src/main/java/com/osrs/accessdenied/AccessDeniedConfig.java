@@ -96,9 +96,76 @@ public interface AccessDeniedConfig extends Config
 	}
 
 	@ConfigSection(
+		name = "The Fractured Archive",
+		description = "Configuration for The Fractured Archive requirements",
+		position = 1
+	)
+	String tfaSection = "tfa";
+
+	@ConfigItem(
+		keyName = "tfaEnabled",
+		name = "Enable Validation",
+		description = "Enable validation for The Fractured Archive (master toggle). At least one requirement below must be enabled for validation to work.",
+		section = tfaSection,
+		position = 0
+	)
+	default boolean tfaEnabled()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "tfaRequireSpell",
+		name = "Require Thralls",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
+		section = tfaSection,
+		position = 1
+	)
+	default boolean tfaRequireSpell()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "tfaRequireDeathCharge",
+		name = "Require Death Charge",
+		description = "Require the ability to cast Death Charge spell. Checks for: 1 Death rune, 1 Blood rune, 1 Soul rune, and Arceuus spellbook. Aether runes can substitute for Soul runes.",
+		section = tfaSection,
+		position = 2
+	)
+	default boolean tfaRequireDeathCharge()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "tfaBanChugJug",
+		name = "Disallow Chug Jug",
+		description = "Fail validation if a Chug Jug is found in your inventory.",
+		section = tfaSection,
+		position = 3
+	)
+	default boolean tfaBanChugJug()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "tfaBanSaturatedHeart",
+		name = "Disallow Saturated Heart",
+		description = "Fail validation if a Saturated Heart is found in your inventory.",
+		section = tfaSection,
+		position = 4
+	)
+	default boolean tfaBanSaturatedHeart()
+	{
+		return false;
+	}
+
+	@ConfigSection(
 		name = "Theatre of Blood",
 		description = "Configuration for Theatre of Blood requirements",
-		position = 1
+		position = 2
 	)
 	String tobSection = "tob";
 
@@ -165,7 +232,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigSection(
 		name = "Tombs of Amascut",
 		description = "Configuration for Tombs of Amascut requirements",
-		position = 2
+		position = 3
 	)
 	String toaSection = "toa";
 
@@ -232,7 +299,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigSection(
 		name = "Chambers of Xeric",
 		description = "Configuration for Chambers of Xeric requirements",
-		position = 3
+		position = 4
 	)
 	String coxSection = "cox";
 
@@ -291,7 +358,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigSection(
 		name = "Chambers of Xeric Scouting",
 		description = "Protect against accidentally reloading a good CoX raid layout during scouting",
-		position = 4
+		position = 5
 	)
 	String coxScoutingSection = "coxScouting";
 
@@ -349,7 +416,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigSection(
 		name = "Inferno",
 		description = "Configuration for Inferno requirements",
-		position = 5
+		position = 6
 	)
 	String infernoSection = "inferno";
 

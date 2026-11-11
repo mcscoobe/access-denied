@@ -605,6 +605,9 @@ public class AccessDeniedPlugin extends Plugin
 			case NEX:
 				addArceuusChecks(missing, config.nexRequireSpell(), config.nexRequireDeathCharge());
 				break;
+			case TFA:
+				addArceuusChecks(missing, config.tfaRequireSpell(), config.tfaRequireDeathCharge());
+				break;
 			case TOB:
 				addArceuusChecks(missing, config.tobRequireSpell(), config.tobRequireDeathCharge());
 				break;

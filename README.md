@@ -5,6 +5,7 @@ A RuneLite plugin that prevents accidental boss entries by validating your spell
 ## Supported Locations
 
 - **Nex** — Arceuus spellbook, thralls, death charge
+- **The Fractured Archive** — Arceuus spellbook, thralls, death charge
 - **Theatre of Blood** — Arceuus spellbook, thralls, death charge
 - **Tombs of Amascut** — Arceuus spellbook, thralls, death charge
 - **Chambers of Xeric** — Arceuus spellbook (thralls, death charge) or Lunar spellbook (humidify, vengeance)

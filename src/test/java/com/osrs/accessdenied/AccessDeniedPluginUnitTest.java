@@ -226,16 +226,31 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
-	void testOnGameStateChangedIgnoresWhenNoPlayer()
+	void testLoggingInAtALocationDetectsItBeforeThePlayerSpawns() throws Exception
 	{
+		// On a fresh login LOGGED_IN fires before the local player exists; the map regions
+		// are already loaded, so the location must still be picked up.
 		GameStateChanged event = mock(GameStateChanged.class);
 		when(event.getGameState()).thenReturn(GameState.LOGGED_IN);
 		when(client.getLocalPlayer()).thenReturn(null);
+		when(worldView.getMapRegions()).thenReturn(new int[]{16470});
 
 		plugin.onGameStateChanged(event);
 
-		// Should not proceed without player
-		verify(client, never()).getTopLevelWorldView();
+		assertThat(getField(plugin, "currentLocation")).isSameAs(BossLocation.TFA);
+	}
+
+	@Example
+	void testStartUpWhileLoggedInDetectsTheCurrentLocation() throws Exception
+	{
+		// Enabling the plugin (or reloading it) while standing at a location fires no
+		// GameStateChanged, so start-up has to work out the location itself.
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(worldView.getMapRegions()).thenReturn(new int[]{16470});
+
+		plugin.startUp();
+
+		assertThat(getField(plugin, "currentLocation")).isSameAs(BossLocation.TFA);
 	}
 
 	@Example

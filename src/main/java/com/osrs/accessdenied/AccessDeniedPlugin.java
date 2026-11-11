@@ -301,7 +301,32 @@ public class AccessDeniedPlugin extends Plugin
 			currentLocation = newLocation;
 			lastMissing = null;
 			lastResultWasValid = true;
+			warnOnceOnArrivalWithoutRequirements(newLocation);
 		}
+	}
+
+	/**
+	 * Master toggles default to on and requirements to off, so a player who never opens the
+	 * settings would never see the toggle-time warning. Tells them once per location, ever:
+	 * the "already warned" flag lives in the profile's config, not in plugin state, so it
+	 * survives logins and restarts and follows profile switches. It isn't declared in
+	 * {@link AccessDeniedConfig}, so it never shows in the config panel.
+	 */
+	private void warnOnceOnArrivalWithoutRequirements(BossLocation location)
+	{
+		if (location == null || !location.isEnabled(config) || location.hasRequirements(config))
+		{
+			return;
+		}
+
+		String warnedKey = location.getConfigPrefix() + "NoRequirementsWarned";
+		if (configManager.getConfiguration(AccessDeniedConfig.CONFIG_GROUP, warnedKey) != null)
+		{
+			return;
+		}
+
+		configManager.setConfiguration(AccessDeniedConfig.CONFIG_GROUP, warnedKey, true);
+		sendNoRequirementsWarning(location);
 	}
 
 	@Subscribe
@@ -683,13 +708,18 @@ public class AccessDeniedPlugin extends Plugin
 
 			if (location.isEnabled(config) && !location.hasRequirements(config))
 			{
-				sendChatMessage(String.format(
-					"<col=ff0000>Warning: %s validation is enabled but no requirements are configured. "
-						+ "Enable at least one requirement for validation to work.</col>",
-					location.getDisplayName()));
+				sendNoRequirementsWarning(location);
 			}
 			return;
 		}
+	}
+
+	private void sendNoRequirementsWarning(BossLocation location)
+	{
+		sendChatMessage(String.format(
+			"<col=ff0000>Warning: %s validation is enabled but no requirements are configured. "
+				+ "Enable at least one requirement for validation to work.</col>",
+			location.getDisplayName()));
 	}
 
 	private List<String> findMissingRequirements(BossLocation location)

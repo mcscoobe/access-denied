@@ -310,6 +310,87 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
+	void testFirstArrivalWithoutRequirementsWarnsOnceAndRecordsIt()
+	{
+		// Fresh profile: the master toggle defaults on, every requirement off.
+		when(config.nexEnabled()).thenReturn(true);
+
+		arriveAt(11601);
+
+		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""),
+			contains("Nex validation is enabled but no requirements"), isNull());
+		verify(configManager).setConfiguration("accessdenied", "nexNoRequirementsWarned", true);
+	}
+
+	@Example
+	void testArrivalAlreadyWarnedForDoesNotRepeat()
+	{
+		when(config.nexEnabled()).thenReturn(true);
+		when(configManager.getConfiguration("accessdenied", "nexNoRequirementsWarned")).thenReturn("true");
+
+		arriveAt(11601);
+
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+	}
+
+	@Example
+	void testStartUpAtLocationAlreadyWarnedForDoesNotRepeat()
+	{
+		when(config.nexEnabled()).thenReturn(true);
+		when(configManager.getConfiguration("accessdenied", "nexNoRequirementsWarned")).thenReturn("true");
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(worldView.getMapRegions()).thenReturn(new int[]{11601});
+
+		plugin.startUp();
+
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+	}
+
+	@Example
+	void testStartUpAtLocationWithoutRequirementsCountsAsArrival()
+	{
+		when(config.nexEnabled()).thenReturn(true);
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(worldView.getMapRegions()).thenReturn(new int[]{11601});
+
+		plugin.startUp();
+
+		verify(client).addChatMessage(eq(ChatMessageType.GAMEMESSAGE), eq(""),
+			contains("no requirements"), isNull());
+	}
+
+	@Example
+	void testArrivalWithRequirementsDoesNotWarnOrConsumeTheOnce()
+	{
+		when(config.nexEnabled()).thenReturn(true);
+		when(config.nexBanChugJug()).thenReturn(true);
+
+		arriveAt(11601);
+
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("nexNoRequirementsWarned"), any());
+	}
+
+	@Example
+	void testArrivalWithMasterToggleOffDoesNotWarnOrConsumeTheOnce()
+	{
+		when(config.nexEnabled()).thenReturn(false);
+
+		arriveAt(11601);
+
+		verify(client, never()).addChatMessage(any(), any(), any(), any());
+		verify(configManager, never()).setConfiguration(eq("accessdenied"), eq("nexNoRequirementsWarned"), any());
+	}
+
+	private void arriveAt(int regionId)
+	{
+		GameStateChanged event = mock(GameStateChanged.class);
+		when(event.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(worldView.getMapRegions()).thenReturn(new int[]{regionId});
+		plugin.onGameStateChanged(event);
+	}
+
+	@Example
 	void testCoxValidationPassesForArceuusComboWhenSatisfied() throws Exception
 	{
 		// THRALLS_AND_DEATH_CHARGE requires both Arceuus spells plus the Arceuus spellbook.

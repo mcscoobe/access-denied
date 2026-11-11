@@ -43,7 +43,7 @@ class BossLocationTest
 	void guardsTheExpectedObjectIds()
 	{
 		assertThat(BossLocation.NEX.getObjectId()).isEqualTo(42967);
-		assertThat(BossLocation.TFA.getObjectId()).isEqualTo(63110);
+		assertThat(BossLocation.TFA.getObjectId()).isEqualTo(62768);
 		assertThat(BossLocation.TOB.getObjectId()).isEqualTo(32653);
 		assertThat(BossLocation.TOA.getObjectId()).isEqualTo(46089);
 		assertThat(BossLocation.COX.getObjectId()).isEqualTo(29789);

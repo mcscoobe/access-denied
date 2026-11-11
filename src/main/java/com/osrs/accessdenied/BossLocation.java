@@ -22,7 +22,7 @@ public enum BossLocation
 		AccessDeniedConfig::nexBanSaturatedHeart,
 		"Chug Jug"),
 
-	TFA("The Fractured Archive", 63110, new int[]{16470},
+	TFA("The Fractured Archive", 62768, new int[]{16470},
 		AccessDeniedConfig::tfaEnabled,
 		c -> c.tfaRequireSpell() || c.tfaRequireDeathCharge(),
 		AccessDeniedConfig::tfaBanChugJug,

@@ -16,6 +16,7 @@ class BossLocationTest
 	void findsEachLocationByItsRegions()
 	{
 		assertThat(BossLocation.findByRegions(new int[]{11601})).isSameAs(BossLocation.NEX);
+		assertThat(BossLocation.findByRegions(new int[]{16470})).isSameAs(BossLocation.TFA);
 		assertThat(BossLocation.findByRegions(new int[]{14642})).isSameAs(BossLocation.TOB);
 		assertThat(BossLocation.findByRegions(new int[]{13454})).isSameAs(BossLocation.TOA);
 		assertThat(BossLocation.findByRegions(new int[]{13393})).isSameAs(BossLocation.COX);
@@ -42,6 +43,7 @@ class BossLocationTest
 	void guardsTheExpectedObjectIds()
 	{
 		assertThat(BossLocation.NEX.getObjectId()).isEqualTo(42967);
+		assertThat(BossLocation.TFA.getObjectId()).isEqualTo(62768);
 		assertThat(BossLocation.TOB.getObjectId()).isEqualTo(32653);
 		assertThat(BossLocation.TOA.getObjectId()).isEqualTo(46089);
 		assertThat(BossLocation.COX.getObjectId()).isEqualTo(29789);
@@ -60,6 +62,12 @@ class BossLocationTest
 		{
 			AccessDeniedConfig.class.getMethod(location.getConfigPrefix() + "Enabled");
 		}
+	}
+
+	@Example
+	void fracturedArchiveUsesTheTfaConfigPrefix()
+	{
+		assertThat(BossLocation.TFA.getConfigPrefix()).isEqualTo("tfa");
 	}
 
 	@Example

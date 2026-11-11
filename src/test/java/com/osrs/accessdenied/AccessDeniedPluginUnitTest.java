@@ -226,16 +226,31 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
-	void testOnGameStateChangedIgnoresWhenNoPlayer()
+	void testLoggingInAtALocationDetectsItBeforeThePlayerSpawns() throws Exception
 	{
+		// On a fresh login LOGGED_IN fires before the local player exists; the map regions
+		// are already loaded, so the location must still be picked up.
 		GameStateChanged event = mock(GameStateChanged.class);
 		when(event.getGameState()).thenReturn(GameState.LOGGED_IN);
 		when(client.getLocalPlayer()).thenReturn(null);
+		when(worldView.getMapRegions()).thenReturn(new int[]{16470});
 
 		plugin.onGameStateChanged(event);
 
-		// Should not proceed without player
-		verify(client, never()).getTopLevelWorldView();
+		assertThat(getField(plugin, "currentLocation")).isSameAs(BossLocation.TFA);
+	}
+
+	@Example
+	void testStartUpWhileLoggedInDetectsTheCurrentLocation() throws Exception
+	{
+		// Enabling the plugin (or reloading it) while standing at a location fires no
+		// GameStateChanged, so start-up has to work out the location itself.
+		when(client.getGameState()).thenReturn(GameState.LOGGED_IN);
+		when(worldView.getMapRegions()).thenReturn(new int[]{16470});
+
+		plugin.startUp();
+
+		assertThat(getField(plugin, "currentLocation")).isSameAs(BossLocation.TFA);
 	}
 
 	@Example
@@ -484,6 +499,55 @@ class AccessDeniedPluginUnitTest
 		List<String> cached = getMissing();
 		assertThat(cached).as("on-demand validation should cache a result").isNotNull();
 		assertThat(cached.isEmpty()).as("cached result should be valid").isTrue();
+		verify(menu, never()).setMenuEntries(any());
+	}
+
+	@Example
+	void testFracturedArchiveDoorReordersWhenThrallsMissing() throws Exception
+	{
+		setField(plugin, "currentLocation", BossLocation.TFA);
+		setField(plugin, "lastMissing", null);
+
+		when(config.tfaEnabled()).thenReturn(true);
+		when(config.tfaRequireSpell()).thenReturn(true);
+		// validator mock returns false by default, so validation is invalid
+
+		MenuEntry walkEntry = mock(MenuEntry.class);
+		when(walkEntry.getType()).thenReturn(MenuAction.WALK);
+		MenuEntry objectEntry = mock(MenuEntry.class);
+		when(objectEntry.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION);
+		when(menu.getMenuEntries()).thenReturn(new MenuEntry[]{walkEntry, objectEntry});
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocation.TFA.getObjectId());
+
+		plugin.onMenuEntryAdded(event);
+
+		ArgumentCaptor<MenuEntry[]> captor = ArgumentCaptor.forClass(MenuEntry[].class);
+		verify(menu).setMenuEntries(captor.capture());
+		MenuEntry[] reordered = captor.getValue();
+		assertThat(reordered[reordered.length - 1]).as("Walk Here should be the top option").isSameAs(walkEntry);
+	}
+
+	@Example
+	void testFracturedArchiveDoorDoesNotReorderWhenThrallsMet() throws Exception
+	{
+		setField(plugin, "currentLocation", BossLocation.TFA);
+		setField(plugin, "lastMissing", null);
+
+		when(config.tfaEnabled()).thenReturn(true);
+		when(config.tfaRequireSpell()).thenReturn(true);
+		when(validator.hasResurrectGreaterGhostRunes()).thenReturn(true);
+		when(validator.hasBookOfTheDead()).thenReturn(true);
+		when(validator.isOnArceuusSpellbook()).thenReturn(true);
+
+		MenuEntryAdded event = mock(MenuEntryAdded.class);
+		when(event.getType()).thenReturn(MenuAction.GAME_OBJECT_FIRST_OPTION.getId());
+		when(event.getIdentifier()).thenReturn(BossLocation.TFA.getObjectId());
+
+		plugin.onMenuEntryAdded(event);
+
 		verify(menu, never()).setMenuEntries(any());
 	}
 

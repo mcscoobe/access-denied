@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.WorldView;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.events.GameStateChanged;
@@ -159,6 +160,16 @@ public class AccessDeniedPlugin extends Plugin
 			.build();
 
 		clientToolbar.addNavigation(navButton);
+
+		// Starting while already logged in fires no GameStateChanged, so the location would
+		// stay unknown until the next loading screen.
+		clientThread.invoke(() ->
+		{
+			if (client.getGameState() == GameState.LOGGED_IN)
+			{
+				updateLocation();
+			}
+		});
 	}
 
 	@Override
@@ -270,12 +281,20 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		if (client.getLocalPlayer() == null)
+		// No local-player check: on a fresh login LOGGED_IN fires before the player spawns,
+		// and the map regions don't depend on it.
+		updateLocation();
+	}
+
+	private void updateLocation()
+	{
+		WorldView worldView = client.getTopLevelWorldView();
+		if (worldView == null)
 		{
 			return;
 		}
 
-		BossLocation newLocation = BossLocation.findByRegions(client.getTopLevelWorldView().getMapRegions());
+		BossLocation newLocation = BossLocation.findByRegions(worldView.getMapRegions());
 
 		if (newLocation != currentLocation)
 		{
@@ -681,6 +700,9 @@ public class AccessDeniedPlugin extends Plugin
 		{
 			case NEX:
 				addArceuusChecks(missing, config.nexRequireSpell(), config.nexRequireDeathCharge());
+				break;
+			case TFA:
+				addArceuusChecks(missing, config.tfaRequireSpell(), config.tfaRequireDeathCharge());
 				break;
 			case TOB:
 				addArceuusChecks(missing, config.tobRequireSpell(), config.tobRequireDeathCharge());

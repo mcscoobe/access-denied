@@ -50,7 +50,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "nexRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes, whether worn or carried in the inventory.",
 		section = nexSection,
 		position = 1
 	)
@@ -117,7 +117,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "tfaRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes, whether worn or carried in the inventory.",
 		section = tfaSection,
 		position = 1
 	)
@@ -184,7 +184,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "tobRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes, whether worn or carried in the inventory.",
 		section = tobSection,
 		position = 1
 	)
@@ -251,7 +251,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "toaRequireSpell",
 		name = "Require Thralls",
-		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes.",
+		description = "Require the ability to cast Thralls spell. Checks for: 10 Fire runes, 5 Blood runes, 1 Cosmic rune, Book of the Dead, and Arceuus spellbook. Aether runes can substitute for Cosmic runes; fire staves and the Tome of Fire cover the Fire runes, whether worn or carried in the inventory.",
 		section = toaSection,
 		position = 1
 	)
@@ -322,7 +322,7 @@ public interface AccessDeniedConfig extends Config
 			+ "Humidify/Vengeance need the Lunar spellbook. Only one spellbook can be required at a time, so the "
 			+ "choices are mutually exclusive. Thralls: 10 Fire, 5 Blood, 1 Cosmic rune + Book of the Dead. "
 			+ "Death Charge: 1 Death, 1 Blood, 1 Soul rune. Humidify: 1 Astral, 1 Fire, 1 Water rune. "
-			+ "Vengeance: 10 Earth, 4 Astral, 2 Death runes. Staves/tomes cover their element's rune; Aether substitutes for Soul/Cosmic.",
+			+ "Vengeance: 10 Earth, 4 Astral, 2 Death runes. Staves/tomes cover their element's rune, whether worn or carried; Aether substitutes for Soul/Cosmic.",
 		section = coxSection,
 		position = 1
 	)
@@ -435,7 +435,7 @@ public interface AccessDeniedConfig extends Config
 	@ConfigItem(
 		keyName = "infernoRequireIceBarrage",
 		name = "Require Ice Barrage",
-		description = "Require the ability to cast Ice Barrage spell. Checks for: 6 Water runes, 2 Death runes, 4 Blood runes, and Ancient spellbook. The Kodai wand, water staves, and the Tome of Water cover the Water runes.",
+		description = "Require the ability to cast Ice Barrage spell. Checks for: 6 Water runes, 2 Death runes, 4 Blood runes, and Ancient spellbook. The Kodai wand, water staves, and the Tome of Water cover the Water runes, whether worn or carried in the inventory.",
 		section = infernoSection,
 		position = 1
 	)

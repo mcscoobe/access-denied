@@ -35,6 +35,40 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Stops accidental clicks on boss entrances and on the Chambers of Xeric reload object.
+ * There are two independent mechanisms; don't conflate them.
+ *
+ * <p><b>Entry validation</b> (every {@link BossLocation}). While the player stands in a
+ * guarded location's map regions and fails a configured requirement (spellbook, runes,
+ * Book of the Dead, a banned item), Walk here becomes the left-click on that location's
+ * entrance object. Fed by {@code GameStateChanged} (which location are we in),
+ * {@code GameTick} (re-validate, warn in chat on the valid-to-invalid edge) and
+ * {@code MenuEntryAdded} (apply the swap). It stops as soon as the requirements are met,
+ * the player leaves the location, or a CoX raid is in progress.
+ *
+ * <p><b>CoX reload lock.</b> Once a scouted raid passes the required-room, disallowed-room
+ * and allowed-layout filters, the reload object's game options are removed outright and a
+ * right-click "Release raid lock" entry is offered instead. Fed by {@code RaidScouted} and
+ * {@code RaidReset} (state), {@code ConfigChanged} on {@code coxScout*} keys (re-evaluate)
+ * and {@code MenuEntryAdded} (apply). It stops when the player releases it, the raid
+ * resets, or the filters stop matching. Those raid events come from RuneLite's built-in
+ * Chambers of Xeric plugin: with that plugin disabled the lock never arms, and it never
+ * arms in challenge mode because that plugin doesn't fire RaidScouted there.
+ *
+ * <p>Both mechanisms edit the menu from {@code MenuEntryAdded}, which fires again every
+ * time the client rebuilds the menu, so the edits are re-applied each frame rather than
+ * persisted.
+ *
+ * <p><b>State resets:</b> everything on start-up and shutdown; the validation cache on
+ * location change and on any config change except the hide-NPCs key, which returns early;
+ * legacy config is re-migrated and hide-NPCs re-applied on profile change; the scouting
+ * state on raid reset.
+ *
+ * <p><b>Threading:</b> config changes arrive off the client thread (AWT), while tick, menu
+ * and raid handlers run on it. Anything that touches the client from a config path must
+ * go through {@link ClientThread}, as {@link #sendChatMessage} does.
+ */
 @Slf4j
 @PluginDescriptor(
 	name = "Access Denied"
@@ -69,6 +103,10 @@ public class AccessDeniedPlugin extends Plugin
 
 	private NavigationButton navButton;
 
+	/**
+	 * The guarded location whose map regions are loaded, or null outside all of them. Set on
+	 * {@code GameStateChanged}; cleared by {@link #resetState}.
+	 */
 	private BossLocation currentLocation;
 
 	/**
@@ -76,9 +114,29 @@ public class AccessDeniedPlugin extends Plugin
 	 * Null means "not checked yet", empty means everything is satisfied.
 	 */
 	private List<String> lastMissing;
+
+	/**
+	 * Latch for the "Missing: ..." chat warning: it fires only when this goes from true to
+	 * false, so the player is told once per failure rather than every tick. Reset to true
+	 * wherever {@link #lastMissing} is cleared, which re-arms the warning.
+	 */
 	private boolean lastResultWasValid = true;
+
+	/** The latest raid from {@code RaidScouted}. Cleared on raid reset and by {@link #resetState}. */
 	private Raid currentCoxRaid;
+
+	/**
+	 * True while the reload object's options are being removed. Set only by
+	 * {@link #evaluateCoxScoutingRaid}; cleared by a failed evaluation, the player's release,
+	 * raid reset and {@link #resetState}. Not cleared when the raid starts:
+	 * {@link #coxRaidInProgress} suppresses menu edits instead.
+	 */
 	private boolean coxReloadLocked = false;
+
+	/**
+	 * Layout code the player released the lock for, so re-scouting the same layout doesn't
+	 * re-lock it. Cleared on raid reset and by {@link #resetState}.
+	 */
 	private String coxScoutingReleasedLayout;
 
 	@Override
@@ -305,6 +363,8 @@ public class AccessDeniedPlugin extends Plugin
 	@Subscribe
 	public void onMenuEntryAdded(MenuEntryAdded event)
 	{
+		// Only first and second game-object options are handled, for both the entrance swap
+		// and the reload removal. An action exposed as a third-to-fifth option is not covered.
 		int eventType = event.getType();
 		if (eventType != MenuAction.GAME_OBJECT_FIRST_OPTION.getId()
 			&& eventType != MenuAction.GAME_OBJECT_SECOND_OPTION.getId())
@@ -314,7 +374,8 @@ public class AccessDeniedPlugin extends Plugin
 
 		// Inside a running raid the entrance object ID is reused by ordinary doors, so
 		// every swap from here on would land on the wrong door. Nothing needs blocking
-		// once the raid has begun anyway.
+		// once the raid has begun anyway. This only holds while currentLocation is COX:
+		// raid rooms outside its registered regions leave the location null.
 		if (coxRaidInProgress())
 		{
 			return;
@@ -494,6 +555,10 @@ public class AccessDeniedPlugin extends Plugin
 		clientThread.invoke(() -> client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", message, null));
 	}
 
+	/**
+	 * Keyed on the layout code only, so a later scout with the same code but different rooms
+	 * stays unlocked. Lasts until the raid resets.
+	 */
 	private void releaseCoxScoutingLock()
 	{
 		coxReloadLocked = false;
@@ -527,6 +592,16 @@ public class AccessDeniedPlugin extends Plugin
 		}
 	}
 
+	/**
+	 * Makes Walk here the left-click by moving it to the end of the menu, leaving every other
+	 * entry in place. Right-click entry stays possible on purpose: the protection targets
+	 * accidental left-clicks, not a deliberate choice. Does nothing when the menu has no Walk
+	 * here entry.
+	 *
+	 * <p>This reorders where the reload lock removes. Menu Entry Swapper can undo a reorder
+	 * but not a removal (see commit 9f1e429), so a user's own MES swap on an entrance can
+	 * override this; removing would also take away the deliberate right-click entry.
+	 */
 	private void reorderMenuToWalkHere(MenuEntry[] menuEntries)
 	{
 		if (menuEntries == null || menuEntries.length == 0)

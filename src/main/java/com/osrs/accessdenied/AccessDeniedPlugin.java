@@ -54,8 +54,9 @@ import java.util.Set;
  * {@code RaidScouted} and {@code RaidReset} (state), {@code ConfigChanged} on
  * {@code coxScout*} keys (re-evaluate) and {@code MenuEntryAdded} (apply). It stops when the player releases it, the raid
  * resets, or the filters stop matching. Those raid events come from RuneLite's built-in
- * Chambers of Xeric plugin: with that plugin disabled the lock never arms, and it never
- * arms in challenge mode because that plugin doesn't fire RaidScouted there.
+ * Chambers of Xeric plugin: with that plugin disabled the lock never arms (the player is
+ * warned in chat, see {@link #warnIfRaidsPluginDisabled}), and it never arms in challenge
+ * mode because that plugin doesn't fire RaidScouted there.
  *
  * <p>Both mechanisms edit the menu from {@code MenuEntryAdded}, which fires again every
  * time the client rebuilds the menu, so the edits are re-applied each frame rather than
@@ -64,9 +65,10 @@ import java.util.Set;
  * <p><b>State resets:</b> everything on start-up and shutdown; the validation cache on
  * location change, on every game tick where validation isn't required or a CoX raid is in
  * progress, and on any config change in this plugin's group except the hide-NPCs key
- * (config changes for other groups and the hide-NPCs key both return early); the scouting
- * state on raid reset. A profile change re-migrates legacy config, re-applies hide-NPCs,
- * resets the validation cache and re-evaluates the reload lock against the new profile.
+ * (config changes for other groups, including {@code runelite.raidsplugin}, and the hide-NPCs
+ * key all return early); the scouting state on raid reset. A profile change re-migrates
+ * legacy config, re-applies hide-NPCs, resets the validation cache and re-evaluates the
+ * reload lock against the new profile.
  *
  * <p><b>Threading:</b> config changes arrive off the client thread (AWT), while tick, menu
  * and raid handlers run on it. All plugin state mutation happens on the client thread, so
@@ -80,6 +82,13 @@ import java.util.Set;
 public class AccessDeniedPlugin extends Plugin
 {
 	private static final String RELEASE_LOCK_OPTION = "Release raid lock";
+
+	/**
+	 * Where RuneLite stores whether its Chambers of Xeric plugin ({@code RaidsPlugin}) is
+	 * enabled: the {@code runelite} group, keyed by the lowercased class name.
+	 */
+	private static final String RUNELITE_CONFIG_GROUP = "runelite";
+	private static final String RAIDS_PLUGIN_KEY = "raidsplugin";
 
 	@Inject
 	private Client client;
@@ -144,6 +153,12 @@ public class AccessDeniedPlugin extends Plugin
 	 */
 	private String coxScoutingReleasedLayout;
 
+	/**
+	 * Latch for the "needs the Chambers Of Xeric plugin" warning: true while the lock can't
+	 * arm and the player has been told, so it's sent once per transition into that state.
+	 */
+	private boolean raidsPluginWarned = false;
+
 	@Override
 	protected void startUp()
 	{
@@ -170,6 +185,7 @@ public class AccessDeniedPlugin extends Plugin
 			if (client.getGameState() == GameState.LOGGED_IN)
 			{
 				updateLocation();
+				warnIfRaidsPluginDisabled();
 			}
 		});
 	}
@@ -209,6 +225,7 @@ public class AccessDeniedPlugin extends Plugin
 		currentCoxRaid = null;
 		coxReloadLocked = false;
 		coxScoutingReleasedLayout = null;
+		raidsPluginWarned = false;
 	}
 
 	/**
@@ -286,6 +303,11 @@ public class AccessDeniedPlugin extends Plugin
 		// No local-player check: on a fresh login LOGGED_IN fires before the player spawns,
 		// and the map regions don't depend on it.
 		updateLocation();
+
+		if (event.getGameState() == GameState.LOGGED_IN)
+		{
+			warnIfRaidsPluginDisabled();
+		}
 	}
 
 	private void updateLocation()
@@ -380,14 +402,25 @@ public class AccessDeniedPlugin extends Plugin
 
 		// For the same reason, do what a coxScout* ConfigChanged would: re-arm the
 		// "Missing: ..." warning and judge the scouted raid by the new profile's filters.
-		lastMissing = null;
-		lastResultWasValid = true;
-		evaluateCoxScoutingRaid();
+		// Like ConfigChanged, this arrives off the client thread.
+		clientThread.invoke(() ->
+		{
+			lastMissing = null;
+			lastResultWasValid = true;
+			evaluateCoxScoutingRaid();
+			warnIfRaidsPluginDisabled();
+		});
 	}
 
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
+		if (RUNELITE_CONFIG_GROUP.equals(event.getGroup()) && RAIDS_PLUGIN_KEY.equals(event.getKey()))
+		{
+			clientThread.invoke(this::warnIfRaidsPluginDisabled);
+			return;
+		}
+
 		if (!AccessDeniedConfig.CONFIG_GROUP.equals(event.getGroup()))
 		{
 			return;
@@ -415,6 +448,7 @@ public class AccessDeniedPlugin extends Plugin
 			if (event.getKey().startsWith("coxScout"))
 			{
 				evaluateCoxScoutingRaid();
+				warnIfRaidsPluginDisabled();
 			}
 		});
 	}
@@ -735,6 +769,28 @@ public class AccessDeniedPlugin extends Plugin
 			"<col=ff0000>Warning: %s validation is enabled but no requirements are configured. "
 				+ "Enable at least one requirement for validation to work.</col>",
 			location.getDisplayName()));
+	}
+
+	/**
+	 * Warns once when Scouting Protection is on with a filter set but RuneLite's Chambers of
+	 * Xeric plugin is disabled, since without its RaidScouted events the reload lock can't
+	 * arm. Re-arms when any of those conditions stops holding.
+	 */
+	private void warnIfRaidsPluginDisabled()
+	{
+		// RaidsPlugin is enabled by default, so a missing value means enabled.
+		boolean cannotArm = "false".equals(configManager.getConfiguration(RUNELITE_CONFIG_GROUP, RAIDS_PLUGIN_KEY))
+			&& config.coxScoutingEnabled()
+			&& (!Text.fromCSV(config.coxScoutRequiredRooms()).isEmpty()
+				|| !Text.fromCSV(config.coxScoutDisallowedRooms()).isEmpty()
+				|| !Text.fromCSV(config.coxScoutAllowedLayouts()).isEmpty());
+
+		if (cannotArm && !raidsPluginWarned)
+		{
+			sendChatMessage("<col=ff0000>Warning: the CoX reload lock needs RuneLite's \"Chambers Of Xeric\" "
+				+ "plugin enabled.</col>");
+		}
+		raidsPluginWarned = cannotArm;
 	}
 
 	private List<String> findMissingRequirements(BossLocation location)

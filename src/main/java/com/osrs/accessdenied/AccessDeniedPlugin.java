@@ -78,7 +78,7 @@ public class AccessDeniedPlugin extends Plugin
 	private List<String> lastMissing;
 	private boolean lastResultWasValid = true;
 	private Raid currentCoxRaid;
-	private boolean coxScoutingRaidGood = false;
+	private boolean coxReloadLocked = false;
 	private String coxScoutingReleasedLayout;
 
 	@Override
@@ -134,7 +134,7 @@ public class AccessDeniedPlugin extends Plugin
 		lastMissing = null;
 		lastResultWasValid = true;
 		currentCoxRaid = null;
-		coxScoutingRaidGood = false;
+		coxReloadLocked = false;
 		coxScoutingReleasedLayout = null;
 	}
 
@@ -257,7 +257,7 @@ public class AccessDeniedPlugin extends Plugin
 	public void onRaidReset(RaidReset event)
 	{
 		currentCoxRaid = null;
-		coxScoutingRaidGood = false;
+		coxReloadLocked = false;
 		coxScoutingReleasedLayout = null;
 	}
 
@@ -344,7 +344,7 @@ public class AccessDeniedPlugin extends Plugin
 			}
 		}
 
-		if (objectId == BossLocation.COX_RELOAD_OBJECT && coxScoutingRaidGood)
+		if (objectId == BossLocation.COX_RELOAD_OBJECT && coxReloadLocked)
 		{
 			removeGameObjectEntriesForObject(BossLocation.COX_RELOAD_OBJECT);
 			addReleaseLockEntry();
@@ -355,24 +355,24 @@ public class AccessDeniedPlugin extends Plugin
 	{
 		if (!config.coxScoutingEnabled() || currentCoxRaid == null)
 		{
-			coxScoutingRaidGood = false;
+			coxReloadLocked = false;
 			return;
 		}
 
 		if (currentCoxRaid.getLayout().toCodeString().equalsIgnoreCase(coxScoutingReleasedLayout))
 		{
 			log.debug("evaluateCoxScoutingRaid: lock released by the player for this layout");
-			coxScoutingRaidGood = false;
+			coxReloadLocked = false;
 			return;
 		}
 
 		Set<String> requiredRooms = new HashSet<>(Text.fromCSV(config.coxScoutRequiredRooms().toLowerCase()));
 		Set<String> disallowedRooms = new HashSet<>(Text.fromCSV(config.coxScoutDisallowedRooms().toLowerCase()));
-		List<String> layoutWhitelist = Text.fromCSV(config.coxScoutAllowedLayouts().toLowerCase());
+		List<String> allowedLayouts = Text.fromCSV(config.coxScoutAllowedLayouts().toLowerCase());
 
-		if (requiredRooms.isEmpty() && disallowedRooms.isEmpty() && layoutWhitelist.isEmpty())
+		if (requiredRooms.isEmpty() && disallowedRooms.isEmpty() && allowedLayouts.isEmpty())
 		{
-			coxScoutingRaidGood = false;
+			coxReloadLocked = false;
 			return;
 		}
 
@@ -386,7 +386,7 @@ public class AccessDeniedPlugin extends Plugin
 			if (rooms.contains(RaidRoom.UNKNOWN_COMBAT) || rooms.contains(RaidRoom.UNKNOWN_PUZZLE))
 			{
 				log.debug("evaluateCoxScoutingRaid: raid is not fully scouted yet — raid is bad");
-				coxScoutingRaidGood = false;
+				coxReloadLocked = false;
 				return;
 			}
 
@@ -407,34 +407,34 @@ public class AccessDeniedPlugin extends Plugin
 			if (!missing.isEmpty())
 			{
 				log.debug("evaluateCoxScoutingRaid: raid is missing required rooms {} — raid is bad", missing);
-				coxScoutingRaidGood = false;
+				coxReloadLocked = false;
 				return;
 			}
 
 			if (!disallowed.isEmpty())
 			{
 				log.debug("evaluateCoxScoutingRaid: raid contains disallowed rooms {} — raid is bad", disallowed);
-				coxScoutingRaidGood = false;
+				coxReloadLocked = false;
 				return;
 			}
 		}
 
-		if (!layoutWhitelist.isEmpty())
+		if (!allowedLayouts.isEmpty())
 		{
 			// Entries match by prefix so a partial code like "fscc" selects a family of layouts.
 			// A full code is its own prefix and still matches only itself: no layout in the
 			// client's table is a prefix of a different one.
 			String layoutCode = currentCoxRaid.getLayout().toCodeString().toLowerCase();
-			if (layoutWhitelist.stream().noneMatch(layoutCode::startsWith))
+			if (allowedLayouts.stream().noneMatch(layoutCode::startsWith))
 			{
-				log.debug("evaluateCoxScoutingRaid: layout '{}' matches no whitelisted layout or prefix — raid is bad", layoutCode);
-				coxScoutingRaidGood = false;
+				log.debug("evaluateCoxScoutingRaid: layout '{}' matches no allowed layout or prefix — raid is bad", layoutCode);
+				coxReloadLocked = false;
 				return;
 			}
 		}
 
-		boolean wasGood = coxScoutingRaidGood;
-		coxScoutingRaidGood = true;
+		boolean wasGood = coxReloadLocked;
+		coxReloadLocked = true;
 
 		if (!wasGood)
 		{
@@ -496,7 +496,7 @@ public class AccessDeniedPlugin extends Plugin
 
 	private void releaseCoxScoutingLock()
 	{
-		coxScoutingRaidGood = false;
+		coxReloadLocked = false;
 		coxScoutingReleasedLayout = currentCoxRaid != null ? currentCoxRaid.getLayout().toCodeString() : null;
 		sendChatMessage("Reload protection released — the reload option is available again.");
 	}

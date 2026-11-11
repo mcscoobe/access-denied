@@ -516,7 +516,7 @@ class AccessDeniedPluginUnitTest
 	{
 		// Issue #15: with the reload block active the object has no game options left, so the
 		// only way out must be the plugin's own menu entry.
-		setField(plugin, "coxScoutingRaidGood", true);
+		setField(plugin, "coxReloadLocked", true);
 
 		Layout layout = mock(Layout.class);
 		when(layout.toCodeString()).thenReturn("fsccppcscf");
@@ -546,7 +546,7 @@ class AccessDeniedPluginUnitTest
 
 		onClick.getValue().accept(releaseEntry);
 
-		assertThat((boolean) getField(plugin, "coxScoutingRaidGood")).as("clicking release must lift the block").isFalse();
+		assertThat((boolean) getField(plugin, "coxReloadLocked")).as("clicking release must lift the block").isFalse();
 
 		// A re-scout of the same raid must not silently re-lock it.
 		when(config.coxScoutingEnabled()).thenReturn(true);
@@ -555,13 +555,13 @@ class AccessDeniedPluginUnitTest
 		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
 		invokePrivate(plugin, "evaluateCoxScoutingRaid");
 
-		assertThat((boolean) getField(plugin, "coxScoutingRaidGood")).as("released raid must stay unlocked").isFalse();
+		assertThat((boolean) getField(plugin, "coxReloadLocked")).as("released raid must stay unlocked").isFalse();
 	}
 
 	@Example
 	void testReleaseLockEntryNotAddedTwiceForSameMenu() throws Exception
 	{
-		setField(plugin, "coxScoutingRaidGood", true);
+		setField(plugin, "coxReloadLocked", true);
 
 		MenuEntry existing = mock(MenuEntry.class);
 		when(existing.getOption()).thenReturn("Release raid lock");
@@ -648,22 +648,22 @@ class AccessDeniedPluginUnitTest
 	private boolean evaluateScoutedRaid() throws Exception
 	{
 		invokePrivate(plugin, "evaluateCoxScoutingRaid");
-		return (boolean) getField(plugin, "coxScoutingRaidGood");
+		return (boolean) getField(plugin, "coxReloadLocked");
 	}
 
 	@Example
-	void testScoutingLayoutWhitelistStillMatchesFullCode() throws Exception
+	void testScoutingAllowedLayoutsStillMatchesFullCode() throws Exception
 	{
 		// A full code is its own prefix, so configs written before prefix matching existed
 		// must keep behaving identically.
 		stubScoutedRaid("FSCCPPCSCF");
 		when(config.coxScoutAllowedLayouts()).thenReturn("fsccppcscf");
 
-		assertThat(evaluateScoutedRaid()).as("a whitelisted full code must still lock the raid").isTrue();
+		assertThat(evaluateScoutedRaid()).as("an allowed full code must still lock the raid").isTrue();
 	}
 
 	@Example
-	void testScoutingLayoutWhitelistMatchesFourLetterPrefix() throws Exception
+	void testScoutingAllowedLayoutsMatchesFourLetterPrefix() throws Exception
 	{
 		stubScoutedRaid("FSCCPPCSCF");
 		when(config.coxScoutAllowedLayouts()).thenReturn("fscc, scpf");
@@ -672,7 +672,7 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
-	void testScoutingLayoutWhitelistMatchesLaterPrefixEntry() throws Exception
+	void testScoutingAllowedLayoutsMatchesLaterPrefixEntry() throws Exception
 	{
 		// Guards against a scan that only ever looks at the first entry.
 		stubScoutedRaid("SCPFCCSPCF");
@@ -682,7 +682,7 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
-	void testScoutingLayoutWhitelistRejectsUnlistedLayout() throws Exception
+	void testScoutingAllowedLayoutsRejectsUnlistedLayout() throws Exception
 	{
 		stubScoutedRaid("SCFCPCCSPF");
 		when(config.coxScoutAllowedLayouts()).thenReturn("fscc, scpf");
@@ -691,7 +691,7 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
-	void testScoutingLayoutWhitelistDoesNotMatchMidStringSubstring() throws Exception
+	void testScoutingAllowedLayoutsDoesNotMatchMidStringSubstring() throws Exception
 	{
 		// Matching is startsWith, not contains — a substring from the middle must not match.
 		stubScoutedRaid("FSCCPPCSCF");
@@ -701,7 +701,7 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
-	void testScoutingLayoutWhitelistIgnoresTrailingCommaAndWhitespace() throws Exception
+	void testScoutingAllowedLayoutsIgnoresTrailingCommaAndWhitespace() throws Exception
 	{
 		// A surviving empty entry would prefix-match every layout and lock every raid.
 		stubScoutedRaid("SCFCPCCSPF");

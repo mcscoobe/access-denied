@@ -1164,6 +1164,65 @@ class AccessDeniedPluginUnitTest
 	}
 
 	@Example
+	void testConfigChangeClearsTheCacheAndReevaluatesTheScoutingLock() throws Exception
+	{
+		stubScoutedRaid("SCPFCCSPSF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("scpf");
+		setField(plugin, "lastMissing", List.of("Rune pouch"));
+		setField(plugin, "lastResultWasValid", false);
+
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("coxScoutAllowedLayouts");
+
+		plugin.onConfigChanged(event);
+
+		assertThat(getField(plugin, "lastMissing")).isNull();
+		assertThat((boolean) getField(plugin, "lastResultWasValid")).isTrue();
+		assertThat((boolean) getField(plugin, "coxReloadLocked")).isTrue();
+	}
+
+	@Example
+	void testConfigChangeLeavesStateAloneUntilTheClientThreadRunsIt() throws Exception
+	{
+		// ConfigChanged arrives on the AWT event thread; the state it resets is owned by the
+		// client thread, so nothing may change until the handed-over work actually runs.
+		doNothing().when(clientThread).invoke(any(Runnable.class));
+		stubScoutedRaid("SCPFCCSPSF");
+		when(config.coxScoutAllowedLayouts()).thenReturn("scpf");
+		List<String> missing = List.of("Rune pouch");
+		setField(plugin, "lastMissing", missing);
+		setField(plugin, "lastResultWasValid", false);
+
+		ConfigChanged event = mock(ConfigChanged.class);
+		when(event.getGroup()).thenReturn("accessdenied");
+		when(event.getKey()).thenReturn("coxScoutAllowedLayouts");
+
+		plugin.onConfigChanged(event);
+
+		verify(clientThread).invoke(any(Runnable.class));
+		assertThat(getField(plugin, "lastMissing")).isSameAs(missing);
+		assertThat((boolean) getField(plugin, "lastResultWasValid")).isFalse();
+		assertThat((boolean) getField(plugin, "coxReloadLocked")).isFalse();
+	}
+
+	@Example
+	void testOtherGroupsAndHideNpcsDoNotReachTheClientThread()
+	{
+		ConfigChanged other = mock(ConfigChanged.class);
+		when(other.getGroup()).thenReturn("othergroup");
+		when(other.getKey()).thenReturn("coxScoutAllowedLayouts");
+		ConfigChanged hideNpcs = mock(ConfigChanged.class);
+		when(hideNpcs.getGroup()).thenReturn("accessdenied");
+		when(hideNpcs.getKey()).thenReturn("hideNpcs");
+
+		plugin.onConfigChanged(other);
+		plugin.onConfigChanged(hideNpcs);
+
+		verify(clientThread, never()).invoke(any(Runnable.class));
+	}
+
+	@Example
 	void testProfileChangeRereadsHideNpcsFromTheNewProfile()
 	{
 		// A profile switch swaps every value at once without a ConfigChanged per key.

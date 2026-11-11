@@ -69,8 +69,9 @@ import java.util.Set;
  * but does not clear any plugin state.
  *
  * <p><b>Threading:</b> config changes arrive off the client thread (AWT), while tick, menu
- * and raid handlers run on it. Anything that touches the client from a config path must
- * go through {@link ClientThread}, as {@link #sendChatMessage} does.
+ * and raid handlers run on it. All plugin state mutation happens on the client thread, so
+ * a config path that changes plugin state or touches the client must go through
+ * {@link ClientThread}, as {@link #onConfigChanged} and {@link #sendChatMessage} do.
  */
 @Slf4j
 @PluginDescriptor(
@@ -395,16 +396,21 @@ public class AccessDeniedPlugin extends Plugin
 			return;
 		}
 
-		warnIfEnabledWithoutRequirements(event.getKey());
-
-		// Reset state so the next tick re-evaluates with the new config
-		lastMissing = null;
-		lastResultWasValid = true;
-
-		if (event.getKey().startsWith("coxScout"))
+		// ConfigChanged arrives on the AWT event thread, but the tick, menu and raid handlers
+		// read and write this state on the client thread, so the work is handed over there.
+		clientThread.invoke(() ->
 		{
-			evaluateCoxScoutingRaid();
-		}
+			warnIfEnabledWithoutRequirements(event.getKey());
+
+			// Reset state so the next tick re-evaluates with the new config
+			lastMissing = null;
+			lastResultWasValid = true;
+
+			if (event.getKey().startsWith("coxScout"))
+			{
+				evaluateCoxScoutingRaid();
+			}
+		});
 	}
 
 	@Subscribe

@@ -65,8 +65,8 @@ import java.util.Set;
  * location change, on every game tick where validation isn't required or a CoX raid is in
  * progress, and on any config change in this plugin's group except the hide-NPCs key
  * (config changes for other groups and the hide-NPCs key both return early); the scouting
- * state on raid reset. A profile change re-migrates legacy config and re-applies hide-NPCs
- * but does not clear any plugin state.
+ * state on raid reset. A profile change re-migrates legacy config, re-applies hide-NPCs,
+ * resets the validation cache and re-evaluates the reload lock against the new profile.
  *
  * <p><b>Threading:</b> config changes arrive off the client thread (AWT), while tick, menu
  * and raid handlers run on it. All plugin state mutation happens on the client thread, so
@@ -377,6 +377,12 @@ public class AccessDeniedPlugin extends Plugin
 		// A profile switch replaces every value at once without raising a ConfigChanged per
 		// key, so the panel and renderer have to be re-read from the new profile here.
 		applyHideNpcs();
+
+		// For the same reason, do what a coxScout* ConfigChanged would: re-arm the
+		// "Missing: ..." warning and judge the scouted raid by the new profile's filters.
+		lastMissing = null;
+		lastResultWasValid = true;
+		evaluateCoxScoutingRaid();
 	}
 
 	@Subscribe
